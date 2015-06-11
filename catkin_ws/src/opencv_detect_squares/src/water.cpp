@@ -10,17 +10,8 @@
 // #include <opencv2/imgcodecs.hpp>
 #include <math.h>
 #include <string.h>
-#include "Circle.h"
 using namespace cv;
 using namespace std;
-
-
-static const std::string OPENCV_WINDOW = "Image window";
-std::string tf_frame_name = "ghssign";
-
-//squares detection variables
-int thresh = 50, N = 11;
-vector<vector<Point> > squares;
 
 
 
@@ -35,19 +26,6 @@ int iLowV = 211;
 int iHighV = 255;
 
 
-
-
-// helper function:
-// finds a cosine of angle between vectors
-// from pt0->pt1 and from pt0->pt2
-static double angle( Point pt1, Point pt2, Point pt0 )
-{
-	double dx1 = pt1.x - pt0.x;
-	double dy1 = pt1.y - pt0.y;
-	double dx2 = pt2.x - pt0.x;
-	double dy2 = pt2.y - pt0.y;
-	return (dx1*dx2 + dy1*dy2)/sqrt((dx1*dx1 + dy1*dy1)*(dx2*dx2 + dy2*dy2) + 1e-10);
-}
 
 
 static Mat thresholdImage(Mat& image)
@@ -76,7 +54,6 @@ class ImageConverter
 	ros::NodeHandle nh_;
 	image_transport::ImageTransport it_;
 	image_transport::Subscriber image_sub_;
-	image_transport::Publisher image_pub_;
 	
 public:
 	ImageConverter()
@@ -84,9 +61,6 @@ public:
 	{
 		// Subscrive to input video feed and publish output video feed
 		image_sub_ = it_.subscribe("/kinect/rgbimage/image_raw", 1, &ImageConverter::imageCb, this);
-		
-		//input video window
-		cv::namedWindow(OPENCV_WINDOW);
 		
 		//red detectio window
 		namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
@@ -106,7 +80,8 @@ public:
 	
 	~ImageConverter()
 	{
-		cv::destroyWindow(OPENCV_WINDOW);
+		cv::destroyWindow("Control");
+		cv::destroyWindow("Thresholded Image");
 	}
 	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
@@ -126,7 +101,6 @@ public:
 		
 		// Update GUI Window
 		cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
-		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
 		cv::waitKey(3);
 		
 	}

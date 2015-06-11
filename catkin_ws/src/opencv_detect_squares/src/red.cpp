@@ -1,7 +1,8 @@
 #include <iostream>
 //ROS imports
 #include <ros/ros.h>
-#include <tf/transform_broadcaster.h>
+
+#include <geometry_msgs/PoseArray.h>
 
 //OpenCV imports
 #include <opencv2/core/core.hpp>
@@ -108,7 +109,7 @@ static void findSquaresAfterThreshold( const Mat& gray0, vector<vector<Point> >&
 				// area may be positive or negative - in accordance with the
 				// contour orientation
 				if( approx.size() == 4 &&
-					fabs(contourArea(Mat(approx))) > 10 &&
+					fabs(contourArea(Mat(approx))) > 100 &&
 					isContourConvex(Mat(approx)) )
 				{
 					double maxCosine = 0;
@@ -163,27 +164,6 @@ static Mat thresholdImage(Mat& image)
 	return imgThresholded;
 }
 	//tf publishing of found ghs signs
-	void poseCallback(int imgWidthHalf, int imgHeightHalf){
-		circ = 0;
-		if (squares.empty())
-			return;
-		Circle c(&squares[0][0],&squares[0][1],&squares[0][2]);
-		circ = &c;
-			
-			
-
-		static tf::TransformBroadcaster br;
-		tf::Transform transform;
-		//TODO normierung auf das Blickfeld der Kamera, also x/breite*blickwinkel oder so
-		//TODO erfragen der tiefeninformation zur korrekten angabe der Z-Koordinate oder berechnen des schnittpunktes mit dem boden
-		int depth = 0;
-		transform.setOrigin( tf::Vector3((imgWidthHalf - c.GetCenter()->x)/10,  (imgHeightHalf - c.GetCenter()->y)/10, 0) );
-		tf::Quaternion q;
-		q.setRPY(0, 0, 0);
-		transform.setRotation(q);
-		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/kinect_visionSensor", tf_frame_name));
-		cout <<"transform\r\n";
-	}
 class ImageConverter
 {
 	ros::NodeHandle nh_;
@@ -252,16 +232,61 @@ public:
 		
 		findSquaresGrayscale(thresholdImage(cv_ptr->image), squares);
 		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
-		poseCallback(cv_ptr->image.size().width / 2, cv_ptr->image.size().height / 2);
+		poseCallback(cv_ptr->image.size().width / 2, cv_ptr->image.size().height / 2, cv_ptr->image);
 		//draw a circle
-		if (circ != 0){
-			circle(cv_ptr->image,*(circ->GetCenter()), 20, Scalar(0,255,0), 3, CV_AA, 0);
-		}
+// 		if (circ != 0){
+// 			circle(cv_ptr->image,*(circ->GetCenter()), 20, Scalar(0,255,0), 3, CV_AA, 0);
+// 		}
 		
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
 		cv::waitKey(3);
 		
+	}
+	void poseCallback(int imgWidthHalf, int imgHeightHalf, Mat& image){
+		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>("/ghsSignPose",50);
+		 
+		circ = 0;
+		if (squares.empty())
+			return;
+		
+		geometry_msgs::PoseArray posearray;
+		posearray.header.stamp = ros::Time::now();
+		posearray.header.frame_id="kinect_visionSensor";
+		posearray.poses.resize(squares.size());
+		
+		for (int i = 0; i < squares.size(); i++)
+		{
+		  Circle c(&squares[i][0],&squares[i][1],&squares[i][2]);
+		  circ = &c;
+		  circle(image,*(circ->GetCenter()), 20, Scalar(0,255,0), 1, CV_AA, 0);
+		  
+		  //x forward
+		  //y left
+		  posearray.poses[i].position.x = (c.GetCenter()->x - imgWidthHalf)/10;
+		  //z up
+		  posearray.poses[i].position.y = (imgHeightHalf - c.GetCenter()->y)/10;
+		  
+		  posearray.poses[i].orientation.x = 0;
+		  posearray.poses[i].orientation.y = 0;
+		  posearray.poses[i].orientation.z = 0;
+		  posearray.poses[i].orientation.w = 0;//-M_PI/2;
+		  
+			  
+/*		  
+		  static tf::TransformBroadcaster br;
+		  tf::Transform transform;
+		  //TODO normierung auf das Blickfeld der Kamera, also x/breite*blickwinkel oder so
+		  //TODO erfragen der tiefeninformation zur korrekten angabe der Z-Koordinate oder berechnen des schnittpunktes mit dem boden
+		  int depth = 0;
+		  transform.setOrigin( tf::Vector3((imgWidthHalf - c.GetCenter()->x)/10,  (imgHeightHalf - c.GetCenter()->y)/10, 0) );
+		  
+		  tf::Quaternion q;
+		  q.setRPY(0, 0, 0);
+		  transform.setRotation(q);
+		  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/kinect_visionSensor", tf_frame_name));*/
+		}
+		posePublisher.publish(posearray);
 	}
 
 };
