@@ -25,13 +25,13 @@ vector<vector<Point> > squares;
 
 
 //red detectoion variables
-int iLowH = 0;
-int iHighH = 179;
+int iLowH = 118;
+int iHighH = 124;
 
-int iLowS = 0; 
+int iLowS = 209; 
 int iHighS = 255;
 
-int iLowV = 0;
+int iLowV = 211;
 int iHighV = 255;
 
 
@@ -122,7 +122,7 @@ public:
 			return;
 		}
 		
-		thresholdImage(cv_ptr->image);
+		Mat imgThresholded = thresholdImage(cv_ptr->image);
 		
 		// Update GUI Window
 		cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
