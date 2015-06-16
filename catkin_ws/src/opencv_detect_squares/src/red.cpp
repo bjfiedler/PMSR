@@ -3,6 +3,9 @@
 #include <ros/ros.h>
 
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <tf/transform_listener.h>
 
 //OpenCV imports
 #include <opencv2/core/core.hpp>
@@ -23,19 +26,22 @@ using namespace std;
 
 static const std::string OPENCV_WINDOW = "Image window";
 static const std::string tf_frame_name = "ghssign";
+// static const std::string tf_world_frame = "base_link";
+static const std::string tf_world_frame = "kinect_visionSensor";
+static const std::string tf_camera_frame = "kinect_visionSensor";
 
 //squares detection variables
 int thresh = 50, N = 11;
 vector<vector<Point> > squares;
 Circle* circ;
 
-//depth image pointer
-cv_bridge::CvImageConstPtr depthCVptr;
+
+sensor_msgs::CameraInfo recentCamInfo;
 
 
 
 //red detectoion variables
-int iLowH = 0;
+int iLowH = 1;
 int iHighH = 10;
 
 int iLowS = 180; 
@@ -170,6 +176,9 @@ class ImageConverter
 	image_transport::ImageTransport it_;
 	image_transport::Subscriber image_sub_;
 	image_transport::Subscriber depth_image_sub_;
+	ros::Subscriber cameraInfo_subscriber_;
+	tf::TransformListener listener;
+	
 	
 public:
 	ImageConverter()
@@ -177,7 +186,9 @@ public:
 	{
 		// Subscrive to input video feed and publish output video feed
 		image_sub_ = it_.subscribe("/kinect/rgbimage/image_raw", 1, &ImageConverter::imageCb, this);
-		//depth_image_sub_ = it_.subscribe("/kinect/depthimage/image_raw", 1, &ImageConverter::depthImageCB, this);
+
+
+		cameraInfo_subscriber_ = nh_.subscribe("/kinect/rgbimage/camera_info", 1, &ImageConverter::cameraInfoCb, this);
 		
 		//squares window
 		cv::namedWindow(OPENCV_WINDOW);
@@ -204,19 +215,6 @@ public:
 		cv::destroyWindow(OPENCV_WINDOW);
 	}
 	
-	void depthImageCB(const sensor_msgs::ImageConstPtr& msg)
-	{
-		try
-		{
-			depthCVptr = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::BGR8);//TYPE_32FC1);
-		}
-		catch (cv_bridge::Exception& e)
-		{
-			ROS_ERROR("cv_bridge exception: %s", e.what());
-			return;
-		}
-	}
-	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
 	{
 		cv_bridge::CvImagePtr cv_ptr;
@@ -233,15 +231,16 @@ public:
 		findSquaresGrayscale(thresholdImage(cv_ptr->image), squares);
 		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
 		poseCallback(cv_ptr->image.size().width / 2, cv_ptr->image.size().height / 2, cv_ptr->image);
-		//draw a circle
-// 		if (circ != 0){
-// 			circle(cv_ptr->image,*(circ->GetCenter()), 20, Scalar(0,255,0), 3, CV_AA, 0);
-// 		}
-		
+
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
 		cv::waitKey(3);
 		
+	}
+	void cameraInfoCb(const sensor_msgs::CameraInfo& msg)
+	{
+// 		cout<<"camInfoCB  "<<msg<<'\n';
+		recentCamInfo = msg;
 	}
 	void poseCallback(int imgWidthHalf, int imgHeightHalf, Mat& image){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>("/ghsSignPose",50);
@@ -252,41 +251,78 @@ public:
 		
 		geometry_msgs::PoseArray posearray;
 		posearray.header.stamp = ros::Time::now();
-		posearray.header.frame_id="kinect_visionSensor";
-		posearray.poses.resize(squares.size());
+		posearray.header.frame_id=tf_world_frame;
+		posearray.poses.resize(1);//squares.size());
 		
-		for (int i = 0; i < squares.size(); i++)
+		for (int i = 0; i < squares.size()&& i < 1; i++)
 		{
-		  Circle c(&squares[i][0],&squares[i][1],&squares[i][2]);
-		  circ = &c;
-		  circle(image,*(circ->GetCenter()), 20, Scalar(0,255,0), 1, CV_AA, 0);
-		  
-		  //x forward
-		  //y left
-		  posearray.poses[i].position.x = (c.GetCenter()->x - imgWidthHalf)/10;
-		  //z up
-		  posearray.poses[i].position.y = (imgHeightHalf - c.GetCenter()->y)/10;
-		  
-		  posearray.poses[i].orientation.x = 0;
-		  posearray.poses[i].orientation.y = 0;
-		  posearray.poses[i].orientation.z = 0;
-		  posearray.poses[i].orientation.w = 0;//-M_PI/2;
-		  
-			  
-/*		  
-		  static tf::TransformBroadcaster br;
-		  tf::Transform transform;
-		  //TODO normierung auf das Blickfeld der Kamera, also x/breite*blickwinkel oder so
-		  //TODO erfragen der tiefeninformation zur korrekten angabe der Z-Koordinate oder berechnen des schnittpunktes mit dem boden
-		  int depth = 0;
-		  transform.setOrigin( tf::Vector3((imgWidthHalf - c.GetCenter()->x)/10,  (imgHeightHalf - c.GetCenter()->y)/10, 0) );
-		  
-		  tf::Quaternion q;
-		  q.setRPY(0, 0, 0);
-		  transform.setRotation(q);
-		  br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "/kinect_visionSensor", tf_frame_name));*/
+			Circle c(&squares[i][0],&squares[i][1],&squares[i][2]);
+			circ = &c;
+			//Draw the circle
+			circle(image,*(c.GetCenter()), 20, Scalar(0,255,0), 1, CV_AA, 0);
+			
+
+			geometry_msgs::PoseStamped destination = translatePixelToRealworld(c.GetCenter()->x, c.GetCenter()->y);
+			
+			posearray.poses[i] = destination.pose;
+
 		}
 		posePublisher.publish(posearray);
+	}
+	
+private:
+	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y)
+	{
+		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
+		
+		tf::StampedTransform transform;
+		cv::Matx31f image_point(x,y,1);
+		cout<<image_point<<'\n';
+		
+		cv::Matx33f cameraIntrinsic(recentCamInfo.K[0],
+									recentCamInfo.K[1],
+									recentCamInfo.K[2],
+									recentCamInfo.K[3],
+									recentCamInfo.K[4],
+									recentCamInfo.K[5],
+									recentCamInfo.K[6],
+									recentCamInfo.K[7],
+									recentCamInfo.K[8]);
+		image_point = cameraIntrinsic.inv()* image_point;
+		
+		cout<<image_point<<'\n';
+		
+		cv::Point3f direction(image_point(0), image_point(1), image_point(2));
+		geometry_msgs::PoseStamped tf_direction, tf_direction_world;
+		tf_direction.pose.position.x = - direction.x;
+		tf_direction.pose.position.y = - direction.y;
+		tf_direction.pose.position.z = direction.z;
+		//rotation around y axys to point in viewing direction of the camera
+		tf_direction.pose.orientation.y = -0.70711;
+		tf_direction.pose.orientation.w = 0.70711;
+		tf_direction.header.frame_id = tf_camera_frame;
+		tf_direction.header.stamp = ros::Time(0);
+		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
+		cout<<tf_direction<<'\n';
+		cout<<tf_direction_world<<'\n';
+		
+		
+		
+		posePublisher.publish(tf_direction);
+		
+		//return Matx31f(transform.getOrigin()) - image_point*transform.getOrigin().z()/direction.z;
+/*		
+		double ratio = transform.getOrigin().z()/direction.z;
+		image_point = image_point * ratio;
+		
+		tf::Vector3 camInWorld = transform.getOrigin();
+		cv::Point3f inWorld(camInWorld.x() - direction.x, camInWorld.y() - direction.y, camInWorld.z() - direction.z); 
+		*/
+// 		return inWorld;
+// 		return direction;
+// 			return origin;
+		return tf_direction;
+		
 	}
 
 };
