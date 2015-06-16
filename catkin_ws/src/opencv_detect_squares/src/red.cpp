@@ -25,10 +25,16 @@ using namespace std;
 
 
 static const std::string OPENCV_WINDOW = "Image window";
-static const std::string tf_frame_name = "ghssign";
+
 static const std::string tf_world_frame = "base_link";
-// static const std::string tf_world_frame = "kinect_visionSensor";
 static const std::string tf_camera_frame = "kinect_visionSensor";
+
+static const std::string posePublishTopic = "/ghsSignPose";
+static const std::string cameraInfoTopic = "/kinect/rgbimage/camera_info";
+static const std::string cameraImageTopic = "/kinect/rgbimage/image_raw";
+
+static const std::string nodeName = "GHS_Sign_Detector";
+
 
 //squares detection variables
 int thresh = 50, N = 11;
@@ -37,11 +43,12 @@ Circle* circ;
 
 
 sensor_msgs::CameraInfo recentCamInfo;
+cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 
 
 //red detectoion variables
-int iLowH = 1;
+int iLowH = 0;
 int iHighH = 10;
 
 int iLowS = 180; 
@@ -185,29 +192,31 @@ public:
 	: it_(nh_)
 	{
 		// Subscrive to input video feed and publish output video feed
-		image_sub_ = it_.subscribe("/kinect/rgbimage/image_raw", 1, &ImageConverter::imageCb, this);
+		image_sub_ = it_.subscribe(cameraImageTopic, 1, &ImageConverter::imageCb, this);
 
 
-		cameraInfo_subscriber_ = nh_.subscribe("/kinect/rgbimage/camera_info", 1, &ImageConverter::cameraInfoCb, this);
+		cameraInfo_subscriber_ = nh_.subscribe(cameraInfoTopic, 1, &ImageConverter::cameraInfoCb, this);
 		
 		//squares window
 		cv::namedWindow(OPENCV_WINDOW);
 		
 		//red detectio window
-		namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
 		namedWindow("Thresholded Image");
-		//Create trackbars in "Control" window
-		cvCreateTrackbar("LowH", "Control", &iLowH, 179); //Hue (0 - 179)
-		cvCreateTrackbar("HighH", "Control", &iHighH, 179);
 		
-		cvCreateTrackbar("LowS", "Control", &iLowS, 255); //Saturation (0 - 255)
-		cvCreateTrackbar("HighS", "Control", &iHighS, 255);
-		
-		cvCreateTrackbar("LowV", "Control", &iLowV, 255); //Value (0 - 255)
-		cvCreateTrackbar("HighV", "Control", &iHighV, 255);
-		
-		
-		cvCreateTrackbar("Threshold Canny", "Control", &thresh, 255);
+// 		//Control Window
+// 		namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
+// 		//Create trackbars in "Control" window
+// 		cvCreateTrackbar("LowH", "Control", &iLowH, 179); //Hue (0 - 179)
+// 		cvCreateTrackbar("HighH", "Control", &iHighH, 179);
+// 		
+// 		cvCreateTrackbar("LowS", "Control", &iLowS, 255); //Saturation (0 - 255)
+// 		cvCreateTrackbar("HighS", "Control", &iHighS, 255);
+// 		
+// 		cvCreateTrackbar("LowV", "Control", &iLowV, 255); //Value (0 - 255)
+// 		cvCreateTrackbar("HighV", "Control", &iHighV, 255);
+// 		
+// 		
+// 		cvCreateTrackbar("Threshold Canny", "Control", &thresh, 255);
 	}
 	
 	~ImageConverter()
@@ -240,10 +249,26 @@ public:
 	void cameraInfoCb(const sensor_msgs::CameraInfo& msg)
 	{
 // 		cout<<"camInfoCB  "<<msg<<'\n';
-		recentCamInfo = msg;
+		if (9 != msg.K.size())
+			cout<<"Wrong size of Camera Intrinsic Matrix K";
+		
+		//may reduce some work but float comparison is difficult
+		bool changed = false;
+		for (int i = 0; i < msg.K.size(); i++)
+		{
+			
+			if (cameraIntrinsic.val[i] != msg.K[i])
+			{
+				changed = true;
+				cameraIntrinsic.val[i] = msg.K[i];
+			}
+		}
+		if (changed) 
+			cameraIntrinsic_inv = cameraIntrinsic.inv();
+	
 	}
 	void poseCallback(int imgWidthHalf, int imgHeightHalf, Mat& image){
-		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>("/ghsSignPose",50);
+		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
 		circ = 0;
 		if (squares.empty())
@@ -274,23 +299,14 @@ public:
 private:
 	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y) //x,y Pixels where GHS sign is located
 	{
-		static ros::Publisher posePublisher2 = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
+// 		static ros::Publisher posePublisher2 = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
 		
 		tf::StampedTransform transform;
 		cv::Matx31f image_point(x,y,1);
 		
-		//Camera Matrix
-		cv::Matx33f cameraIntrinsic(recentCamInfo.K[0],
-									recentCamInfo.K[1],
-									recentCamInfo.K[2],
-									recentCamInfo.K[3],
-									recentCamInfo.K[4],
-									recentCamInfo.K[5],
-									recentCamInfo.K[6],
-									recentCamInfo.K[7],
-									recentCamInfo.K[8]);
+
 		//compute realworld position
-		image_point = cameraIntrinsic.inv()* image_point;
+		image_point = cameraIntrinsic_inv * image_point;
 		
 		
 		cv::Point3f direction(image_point(0), image_point(1), image_point(2));
@@ -309,21 +325,38 @@ private:
 		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
 		
 		
-		if (i == 0){
-			//green arrow, position in kinect_visionSensor
-			posePublisher2.publish(tf_direction);
-		}
+// 		//green arrow, position in kinect_visionSensor
+// 		posePublisher2.publish(tf_direction);
 
+		geometry_msgs::PointStamped cameraZero;
+		cameraZero.header.frame_id = tf_camera_frame;
+		cameraZero.header.stamp = ros::Time(0);
+		geometry_msgs::PointStamped camZeroWorld;
+		listener.transformPoint(tf_world_frame, cameraZero, camZeroWorld);
 		
-		//return Matx31f(transform.getOrigin()) - image_point*transform.getOrigin().z()/direction.z;
-/*		
-		double ratio = transform.getOrigin().z()/direction.z;
-		image_point = image_point * ratio;
 		
-		tf::Vector3 camInWorld = transform.getOrigin();
-		cv::Point3f inWorld(camInWorld.x() - direction.x, camInWorld.y() - direction.y, camInWorld.z() - direction.z); 
-		*/
-		return tf_direction_world;
+		
+		geometry_msgs::Point directionWorld;
+		directionWorld.x = tf_direction_world.pose.position.x - camZeroWorld.point.x;
+		directionWorld.y = tf_direction_world.pose.position.y - camZeroWorld.point.y;
+		directionWorld.z = tf_direction_world.pose.position.z - camZeroWorld.point.z;
+		
+		
+		
+		double ratio = -camZeroWorld.point.z / directionWorld.z;
+		
+// 		cout<<"height: "<<camZeroWorld.point.z<<" ratio: "<<ratio<<'\n';
+		
+		geometry_msgs::PoseStamped positionOnFloor;
+		positionOnFloor.pose.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
+		positionOnFloor.pose.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
+		positionOnFloor.pose.position.z = camZeroWorld.point.z + directionWorld.z * ratio;
+		
+		positionOnFloor.header.frame_id = tf_world_frame;
+		positionOnFloor.header.stamp = ros::Time::now();
+		
+	
+		return positionOnFloor;
 		
 	}
 
@@ -331,7 +364,7 @@ private:
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "image_converter");
+	ros::init(argc, argv, nodeName);
 	ImageConverter ic;
 	ros::spin();
 	return 0;
