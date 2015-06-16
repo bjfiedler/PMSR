@@ -1,0 +1,23 @@
+Funktion der Unterprogramme:
+
+	opencv_detect_squares/red
+		detektion von roten rechtecken.
+		Die Mittelpunkte dieser werden auf dem topic /ghsSignPose als PoseArray gepublished
+
+	opencv_detect_squares/water
+		detektion der größten blauen Fläche im Bild.
+		Diese wird als Wasser vermutet und als Polygon auf dem Topic /waterPoly gepublished
+
+
+
+Compileaufruf:
+catkin_make
+
+Sourccen des catkin_workspaces:
+
+source ...../PMSR/catkin_ws/devel/setup.bash
+
+ausführen:
+
+rosrun opencv_detect_squares [water|red]
+
