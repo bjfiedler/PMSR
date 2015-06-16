@@ -26,8 +26,8 @@ using namespace std;
 
 static const std::string OPENCV_WINDOW = "Image window";
 static const std::string tf_frame_name = "ghssign";
-// static const std::string tf_world_frame = "base_link";
-static const std::string tf_world_frame = "kinect_visionSensor";
+static const std::string tf_world_frame = "base_link";
+// static const std::string tf_world_frame = "kinect_visionSensor";
 static const std::string tf_camera_frame = "kinect_visionSensor";
 
 //squares detection variables
@@ -252,9 +252,9 @@ public:
 		geometry_msgs::PoseArray posearray;
 		posearray.header.stamp = ros::Time::now();
 		posearray.header.frame_id=tf_world_frame;
-		posearray.poses.resize(1);//squares.size());
+		posearray.poses.resize(squares.size());
 		
-		for (int i = 0; i < squares.size()&& i < 1; i++)
+		for (int i = 0; i < squares.size(); i++)
 		{
 			Circle c(&squares[i][0],&squares[i][1],&squares[i][2]);
 			circ = &c;
@@ -267,18 +267,19 @@ public:
 			posearray.poses[i] = destination.pose;
 
 		}
+		//red arrows
 		posePublisher.publish(posearray);
 	}
 	
 private:
-	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y)
+	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y) //x,y Pixels where GHS sign is located
 	{
-		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
+		static ros::Publisher posePublisher2 = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
 		
 		tf::StampedTransform transform;
 		cv::Matx31f image_point(x,y,1);
-		cout<<image_point<<'\n';
 		
+		//Camera Matrix
 		cv::Matx33f cameraIntrinsic(recentCamInfo.K[0],
 									recentCamInfo.K[1],
 									recentCamInfo.K[2],
@@ -288,27 +289,31 @@ private:
 									recentCamInfo.K[6],
 									recentCamInfo.K[7],
 									recentCamInfo.K[8]);
+		//compute realworld position
 		image_point = cameraIntrinsic.inv()* image_point;
 		
-		cout<<image_point<<'\n';
 		
 		cv::Point3f direction(image_point(0), image_point(1), image_point(2));
 		geometry_msgs::PoseStamped tf_direction, tf_direction_world;
+		
 		tf_direction.pose.position.x = - direction.x;
 		tf_direction.pose.position.y = - direction.y;
 		tf_direction.pose.position.z = direction.z;
 		//rotation around y axys to point in viewing direction of the camera
 		tf_direction.pose.orientation.y = -0.70711;
 		tf_direction.pose.orientation.w = 0.70711;
+		//no rotation
+// 		tf_direction.pose.orientation.w = 1;
 		tf_direction.header.frame_id = tf_camera_frame;
 		tf_direction.header.stamp = ros::Time(0);
 		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
-		cout<<tf_direction<<'\n';
-		cout<<tf_direction_world<<'\n';
 		
 		
-		
-		posePublisher.publish(tf_direction);
+		if (i == 0){
+			//green arrow, position in kinect_visionSensor
+			posePublisher2.publish(tf_direction);
+		}
+
 		
 		//return Matx31f(transform.getOrigin()) - image_point*transform.getOrigin().z()/direction.z;
 /*		
@@ -318,10 +323,7 @@ private:
 		tf::Vector3 camInWorld = transform.getOrigin();
 		cv::Point3f inWorld(camInWorld.x() - direction.x, camInWorld.y() - direction.y, camInWorld.z() - direction.z); 
 		*/
-// 		return inWorld;
-// 		return direction;
-// 			return origin;
-		return tf_direction;
+		return tf_direction_world;
 		
 	}
 
