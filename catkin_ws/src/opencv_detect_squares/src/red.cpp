@@ -76,7 +76,7 @@ static double angle( Point pt1, Point pt2, Point pt0 )
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-static void findSquaresAfterThreshold( const Mat& gray0, vector<vector<Point> >& squares )
+static void findSquares( const Mat& gray0, vector<vector<Point> >& squares )
 {
 	vector<vector<Point> > contours;
 	Mat gray;
