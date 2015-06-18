@@ -38,7 +38,7 @@ cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 //red detectoion variables
 int iLowH = 118;
-int iHighH = 124;
+int iHighH = 119;
 
 int iLowS = 209; 
 int iHighS = 255;
@@ -129,6 +129,9 @@ static vector<Point> findLargestSquare( const Mat& gray0 )
 			squareID = i;
 		}
 	}
+	
+	if (squares.empty())
+	  return vector<Point>();
 	return squares[squareID];
 }
 
@@ -200,7 +203,6 @@ public:
 		
 		if (square.empty())
 			return;
-		
 		geometry_msgs::PolygonStamped poly;
 		poly.header.stamp = ros::Time::now();
 		poly.header.frame_id = tf_world_frame;
@@ -212,9 +214,11 @@ public:
 			poly.polygon.points[i].x = p.x;
 			poly.polygon.points[i].y = p.y;
 			poly.polygon.points[i].z = p.z;
+			
 		}
-		publisher.publish(poly);
 		
+		publisher.publish(poly);
+		return;
 	}
 	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
@@ -233,15 +237,17 @@ public:
 		Mat imgThresholded = thresholdImage(cv_ptr->image);
 		vector<Point> square = findLargestSquare(imgThresholded);
 		
-		//draw the Square
-		const Point* p = &square[0];
-		int n = (int)square.size();
-		polylines(cv_ptr->image, &p, &n, 1, true, Scalar(0,255,0), 1, CV_AA);
+		if (!square.empty())
+		{
+		  //draw the Square
+		  const Point* p = &square[0];
+		  int n = (int)square.size();
+		  polylines(cv_ptr->image, &p, &n, 1, true, Scalar(0,255,0), 1, CV_AA);
+		}
 		
 		
 		publishSquare(square);
-		
-		
+
 		// Update GUI Window
 		cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
 		cv::waitKey(3);

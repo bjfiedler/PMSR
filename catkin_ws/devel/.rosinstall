@@ -1,2 +1,2 @@
 - setup-file:
-    local-name: /home/bjoern/PMSR/catkin_ws/devel/setup.sh
+    local-name: /home/pmsr/PMSR/catkin_ws/devel/setup.sh
