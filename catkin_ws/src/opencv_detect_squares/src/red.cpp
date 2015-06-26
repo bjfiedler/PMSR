@@ -76,11 +76,13 @@ static double angle( Point pt1, Point pt2, Point pt0 )
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-static void findSquaresAfterThreshold( const Mat& gray0, vector<vector<Point> >& squares )
+static void findSquares( const Mat& gray0, vector<vector<Point> >& squares )
 {
 	vector<vector<Point> > contours;
 	Mat gray;
 
+	squares.clear();
+	
 		
 		// try several threshold levels
 		for( int l = 0; l < N; l++ )
@@ -143,13 +145,6 @@ static void findSquaresAfterThreshold( const Mat& gray0, vector<vector<Point> >&
 			}
 		}
 }
-static void findSquaresGrayscale( const Mat& image, vector<vector<Point> >& squares )
-{
-
-		
-	squares.clear();
-	findSquaresAfterThreshold(image, squares);
-}
 
 
 // the function draws all the squares in the image
@@ -176,7 +171,6 @@ static Mat thresholdImage(Mat& image)
 	imshow("Thresholded Image", imgThresholded); //show the thresholded image
 	return imgThresholded;
 }
-	//tf publishing of found ghs signs
 class ImageConverter
 {
 	ros::NodeHandle nh_;
@@ -222,6 +216,8 @@ public:
 	~ImageConverter()
 	{
 		cv::destroyWindow(OPENCV_WINDOW);
+		cv::destroyWindow("Thresholded Image");
+		cv:destroyWindow("Control");
 	}
 	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
@@ -237,9 +233,9 @@ public:
 			return;
 		}
 		
-		findSquaresGrayscale(thresholdImage(cv_ptr->image), squares);
+		findSquares(thresholdImage(cv_ptr->image), squares);
 		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
-		poseCallback(cv_ptr->image.size().width / 2, cv_ptr->image.size().height / 2, cv_ptr->image);
+		publishSquares(cv_ptr->image);
 
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
@@ -267,7 +263,7 @@ public:
 			cameraIntrinsic_inv = cameraIntrinsic.inv();
 	
 	}
-	void poseCallback(int imgWidthHalf, int imgHeightHalf, Mat& image){
+	void publishSquares(Mat& image){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
 		circ = 0;
