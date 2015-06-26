@@ -1,6 +1,6 @@
 <launch>
 <node pkg="amcl" type="amcl" name="amcl">
-  <remap from="scan" to="scan_filtered"/>
+  <remap from="scan" to="scan_back"/>
   <!-- Publish scans from best pose at a max of 10 Hz -->
   <param name="odom_model_type" value="omni"/>
   <param name="odom_alpha5" value="0.1"/>

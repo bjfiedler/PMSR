@@ -6,6 +6,8 @@ project(youbot_2dnav)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   move_base
+  move_base_msgs
+  actionlib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -159,3 +161,9 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+add_executable(turn_twist src/turn_twist.cpp)
+target_link_libraries(turn_twist ${catkin_LIBRARIES})
+
+add_executable(send_goal src/send_goal.cpp)
+target_link_libraries(send_goal ${catkin_LIBRARIES})

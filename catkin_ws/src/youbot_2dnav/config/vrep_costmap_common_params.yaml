@@ -8,7 +8,7 @@ plugins:
 publish_frequency: 1.0
 obstacles:
     observation_sources: base_scan
-    base_scan: {sensor_frame: laser, data_type: LaserScan, topic: /scan_filtered, marking: true, clearing: true}
+    base_scan: {sensor_frame: base_laser_back_link, data_type: LaserScan, topic: /scan_back, marking: true, clearing: true}
 inflation:
     inflation_radius: 0.25
     cost_scaling_factor: 15.0   
