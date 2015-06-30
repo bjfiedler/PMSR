@@ -11,8 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   tf
-  pcl_conversions
-  pcl_ros
 )
 find_package(OpenCV)
 

@@ -2,6 +2,7 @@
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <sensor_msgs/PointCloud.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <tf/transform_broadcaster.h>
@@ -23,11 +24,12 @@ using namespace std;
 static const std::string OPENCV_WINDOW = "Image window";
 
 static const std::string tf_world_frame = "base_link";
-static const std::string tf_camera_frame = "kinect_visionSensor";
+static std::string tf_camera_frame = "kinect_visionSensor";
 
 static const std::string posePublishTopic = "/waterPoly";
-static const std::string cameraInfoTopic = "/kinect/rgbimage/camera_info";
-static const std::string cameraImageTopic = "/kinect/rgbimage/image_raw";
+static const std::string pointCloudPublisherTobic = "/waterPointCloud";
+static std::string cameraInfoTopic;// = "/cameraInfo";
+static std::string cameraImageTopic;// = "/rgb_image";
 
 static const std::string nodeName = "Water_Detector";
 
@@ -36,16 +38,10 @@ cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 
 
-//red detectoion variables
-int iLowH = 118;
-int iHighH = 119;
+//thresholding parameters
+int iLowH, iHighH, iLowS, iHighS, iLowV, iHighV, thresh, N;
 
-int iLowS = 209; 
-int iHighS = 255;
-
-int iLowV = 211;
-int iHighV = 255;
-int thresh = 50, N = 11;
+bool debug = false;
 
 
 
@@ -170,37 +166,41 @@ public:
 	: it_(nh_)
 	{
 		// Subscrive to input video feed and publish output video feed
-		image_sub_ = it_.subscribe("/kinect/rgbimage/image_raw", 1, &ImageConverter::imageCb, this);
+		image_sub_ = it_.subscribe(cameraImageTopic, 1, &ImageConverter::imageCb, this);
 		
 		cameraInfo_subscriber_ = nh_.subscribe(cameraInfoTopic, 1, &ImageConverter::cameraInfoCb, this);
 		
-		
-		//red detectio window
-		namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
-		namedWindow("Thresholded Image");
-		//Create trackbars in "Control" window
-		cvCreateTrackbar("LowH", "Control", &iLowH, 179); //Hue (0 - 179)
-		cvCreateTrackbar("HighH", "Control", &iHighH, 179);
-		
-		cvCreateTrackbar("LowS", "Control", &iLowS, 255); //Saturation (0 - 255)
-		cvCreateTrackbar("HighS", "Control", &iHighS, 255);
-		
-		cvCreateTrackbar("LowV", "Control", &iLowV, 255); //Value (0 - 255)
-		cvCreateTrackbar("HighV", "Control", &iHighV, 255);
-		
+		if (debug)
+		{
+			//red detectio window
+			namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
+			namedWindow("Thresholded Image");
+			//Create trackbars in "Control" window
+			cvCreateTrackbar("LowH", "Control", &iLowH, 179); //Hue (0 - 179)
+			cvCreateTrackbar("HighH", "Control", &iHighH, 179);
+			
+			cvCreateTrackbar("LowS", "Control", &iLowS, 255); //Saturation (0 - 255)
+			cvCreateTrackbar("HighS", "Control", &iHighS, 255);
+			
+			cvCreateTrackbar("LowV", "Control", &iLowV, 255); //Value (0 - 255)
+			cvCreateTrackbar("HighV", "Control", &iHighV, 255);
+		}
 		
 	}
 	
 	~ImageConverter()
 	{
-		cv::destroyWindow("Control");
-		cv::destroyWindow("Thresholded Image");
+		if (debug)
+		{
+			cv::destroyWindow("Control");
+			cv::destroyWindow("Thresholded Image");
+		}
 	}
 	
 	void publishSquare(vector<Point>& square)
 	{
-		static ros::Publisher publisher = nh_.advertise<geometry_msgs::PolygonStamped>(posePublishTopic,50);
-		
+		static ros::Publisher polyPublisher = nh_.advertise<geometry_msgs::PolygonStamped>(posePublishTopic,10);
+		static ros::Publisher pointCloudPublisher = nh_.advertise<sensor_msgs::PointCloud>(pointCloudPublisherTobic, 10);
 		if (square.empty())
 			return;
 		geometry_msgs::PolygonStamped poly;
@@ -217,7 +217,39 @@ public:
 			
 		}
 		
-		publisher.publish(poly);
+		polyPublisher.publish(poly);
+		
+		
+#define NR_SEGMENTS 20.0
+		sensor_msgs::PointCloud pc;
+		pc.header.stamp = ros::Time::now();
+		pc.header.frame_id = tf_world_frame;
+		pc.points.resize(poly.polygon.points.size()*NR_SEGMENTS);
+		pc.channels.resize(1);
+		pc.channels[0].values.resize(poly.polygon.points.size() * NR_SEGMENTS);
+		
+		double dir_x, dir_y;
+		for (int kante = 0; kante < poly.polygon.points.size(); kante++)
+		{
+			dir_x = poly.polygon.points[(kante+1)%poly.polygon.points.size()].x - poly.polygon.points[kante].x;
+			dir_x /= NR_SEGMENTS;
+			dir_y = poly.polygon.points[(kante+1)%poly.polygon.points.size()].y - poly.polygon.points[kante].y;
+			dir_y /= NR_SEGMENTS;
+			for (int segment = 0; segment < NR_SEGMENTS; segment++)
+			{
+				pc.points[kante*NR_SEGMENTS + segment].x = dir_x*segment + poly.polygon.points[kante].x;
+				pc.points[kante*NR_SEGMENTS + segment].y = dir_y*segment + poly.polygon.points[kante].y;
+			}
+			
+		}
+		pc.channels[0].name = "intensity";
+		for (int i = 0; i < pc.channels[0].values.size(); i++)
+			pc.channels[0].values[i]=255;
+		
+		pointCloudPublisher.publish(pc);
+		
+		
+		
 		return;
 	}
 	
@@ -249,7 +281,7 @@ public:
 		publishSquare(square);
 
 		// Update GUI Window
-		cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
+		if (debug) cv::imshow("Thresholded Image", imgThresholded); //show the thresholded image
 		cv::waitKey(3);
 		
 	}
@@ -356,6 +388,47 @@ private:
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "image_converter");
+	bool vrep = false;
+	for (int i = 0; i < argc; i++)
+		if (strcmp("vrep", argv[i]) ==0)
+			vrep = true;
+		else if (strcmp("debug", argv[i]) == 0)
+			debug = true;
+		
+	if (vrep)
+	{
+		cameraInfoTopic = "/kinect/rgbimage/camera_info";
+		cameraImageTopic  = "/kinect/rgbimage/image_raw";
+		tf_camera_frame  = "kinect_visionSensor";
+		iLowH = 118;
+		iHighH = 119;
+		
+		iLowS = 209; 
+		iHighS = 255;
+		
+		iLowV = 211;
+		iHighV = 255;
+		
+		thresh = 50, N = 11;
+	}
+	else
+	{
+		cameraInfoTopic = "/camera_info";
+		cameraImageTopic  = "/rgb_image";
+		tf_camera_frame  = "kinect_visionSensor";
+		//red detectoion variables
+		iLowH = 88;
+		iHighH = 123;
+		
+		iLowS = 97; 
+		iHighS = 255;
+		
+		iLowV = 89;
+		iHighV = 255;
+		thresh = 50, N = 11;
+	}
+		
+		
 	ImageConverter ic;
 	ros::spin();
 	return 0;

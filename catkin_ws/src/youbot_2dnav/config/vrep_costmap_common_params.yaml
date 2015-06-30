@@ -7,8 +7,9 @@ plugins:
     - {name: inflation,        type: "costmap_2d::InflationLayer"}
 publish_frequency: 1.0
 obstacles:
-    observation_sources: base_scan
+    observation_sources: base_scan water
     base_scan: {sensor_frame: base_laser_back_link, data_type: LaserScan, topic: /scan_back, marking: true, clearing: true}
+    water: {data_type: PointCloud, topic: /waterPointCloud, marking: true}
 inflation:
     inflation_radius: 0.25
     cost_scaling_factor: 15.0   
