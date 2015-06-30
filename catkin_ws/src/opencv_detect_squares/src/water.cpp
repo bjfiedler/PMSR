@@ -301,7 +301,13 @@ private:
 		// 		tf_direction.pose.orientation.w = 1;
 		tf_direction.header.frame_id = tf_camera_frame;
 		tf_direction.header.stamp = ros::Time(0);
-		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
+		try{
+			listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
+		}
+		catch (tf2::ExtrapolationException e)
+		{
+			ROS_ERROR("exception: %s", e.what());
+		}
 		
 		
 		// 		//green arrow, position in kinect_visionSensor
@@ -311,7 +317,13 @@ private:
 		cameraZero.header.frame_id = tf_camera_frame;
 		cameraZero.header.stamp = ros::Time(0);
 		geometry_msgs::PointStamped camZeroWorld;
-		listener.transformPoint(tf_world_frame, cameraZero, camZeroWorld);
+		try{
+			listener.transformPoint(tf_world_frame, cameraZero, camZeroWorld);
+		}
+		catch (tf2::ExtrapolationException e)
+		{
+			ROS_ERROR("exception: %s", e.what());
+		}
 		
 		
 		
