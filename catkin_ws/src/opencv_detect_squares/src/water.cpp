@@ -415,7 +415,7 @@ int main(int argc, char** argv)
 	{
 		cameraInfoTopic = "/camera_info";
 		cameraImageTopic  = "/rgb_image";
-		tf_camera_frame  = "kinect_visionSensor";
+		tf_camera_frame  = "rgb_frame";
 		//red detectoion variables
 		iLowH = 88;
 		iHighH = 123;
