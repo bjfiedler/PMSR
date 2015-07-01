@@ -1,4 +1,5 @@
 #include <iostream>
+#include <stdlib.h>
 //ROS imports
 #include <ros/ros.h>
 
@@ -17,7 +18,6 @@
 
 #include <math.h>
 #include <string.h>
-#include "Circle.h"
 
 
 using namespace cv;
@@ -39,7 +39,9 @@ static const std::string nodeName = "GHS_Sign_Detector";
 //squares detection variables
 int thresh = 50, N = 11;
 vector<vector<Point> > squares;
-Circle* circ;
+vector<Point2f> center;
+vector<float> radius;
+int biggestContour = -1;
 
 
 sensor_msgs::CameraInfo recentCamInfo;
@@ -76,12 +78,15 @@ static double angle( Point pt1, Point pt2, Point pt0 )
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-static void findSquares( const Mat& gray0, vector<vector<Point> >& squares )
+static void findSquares( const Mat& gray0)
 {
 	vector<vector<Point> > contours;
 	Mat gray;
 
 	squares.clear();
+	center.clear();
+	radius.clear();
+	biggestContour = -1;
 	
 		
 		// try several threshold levels
@@ -144,19 +149,48 @@ static void findSquares( const Mat& gray0, vector<vector<Point> >& squares )
 				}
 			}
 		}
+		for (int i = 0; i < squares.size(); i++)
+		{
+			float t_radius;
+			Point2f t_center;
+			minEnclosingCircle((Mat)squares[i], t_center, t_radius);
+			bool newCircle = true;
+			for (int j = 0; j < center.size(); j++)
+			{
+				if ((pow(center[j].x- t_center.x, 2) + pow(center[j].y - t_center.y, 2)) < (radius[j]*radius[j]))
+				{
+					newCircle = false;
+					if (radius[j]< t_radius)
+					{
+						radius[j] = t_radius;
+						center[j] = t_center;
+						biggestContour = i;
+					}
+				}
+				
+			}
+			if (newCircle)
+			{
+				radius.push_back(t_radius);
+				center.push_back(t_center);
+				biggestContour = i;
+			}
+			
+		}
+
 }
 
 
 // the function draws all the squares in the image
-static void drawSquares( Mat& image, const vector<vector<Point> >& squares, Scalar color)
-{
-	for( size_t i = 0; i < squares.size(); i++ )
-	{
-		const Point* p = &squares[i][0];
-		int n = (int)squares[i].size();
-		polylines(image, &p, &n, 1, true, color, 1, CV_AA);
-	}
-}
+// static void drawSquares( Mat& image, const vector<vector<Point2f> >& squares, Scalar color)
+// {
+// 	for( size_t i = 0; i < squares.size(); i++ )
+// 	{
+// 		const Point* p = &squares[i][0];
+// 		int n = (int)squares[i].size();
+// 		polylines(image, &p, &n, 1, true, color, 1, CV_AA);
+// 	}
+// }
 
 static Mat thresholdImage(Mat& image)
 {
@@ -168,7 +202,7 @@ static Mat thresholdImage(Mat& image)
 	
 	inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
 
-	imshow("Thresholded Image", imgThresholded); //show the thresholded image
+	//imshow("Thresholded Image", imgThresholded); //show the thresholded image
 	return imgThresholded;
 }
 class ImageConverter
@@ -233,9 +267,32 @@ public:
 			return;
 		}
 		
-		findSquares(thresholdImage(cv_ptr->image), squares);
-		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
-		publishSquares(cv_ptr->image);
+ 		findSquares(thresholdImage(cv_ptr->image));
+// 		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
+		 publishSquares(cv_ptr->image);
+		
+		if (biggestContour != -1)
+		{
+// 			RotatedRect rect( squares[biggestContour][0], squares[biggestContour][1], squares[biggestContour][2]);
+			
+			RotatedRect rect = minAreaRect(squares[biggestContour]);
+			Mat M,rotated, cropped;
+			
+			float angle = rect.angle;
+			Size rect_size = rect.size;
+			if (rect.angle < -45)
+			{
+				angle +=90;
+				swap(rect_size.width, rect_size.height);
+			}
+			M = getRotationMatrix2D(rect.center, angle, 1.0);
+			
+			warpAffine(cv_ptr->image, rotated, M, cv_ptr->image.size(), INTER_CUBIC);
+			//getRectSubPix(rotated, rect_size, rect.center, cropped);
+			cropped = rotated(rect.boundingRect());
+			
+			imshow("Thresholded Image", cropped); //show the thresholded image
+		}
 
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
@@ -266,24 +323,21 @@ public:
 	void publishSquares(Mat& image){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
-		circ = 0;
+// 		circ = 0;
 		if (squares.empty())
 			return;
 		
 		geometry_msgs::PoseArray posearray;
 		posearray.header.stamp = ros::Time::now();
 		posearray.header.frame_id=tf_world_frame;
-		posearray.poses.resize(squares.size());
+		posearray.poses.resize(radius.size());
 		
-		for (int i = 0; i < squares.size(); i++)
+		for (int i = 0; i < radius.size(); i++)
 		{
-			Circle c(&squares[i][0],&squares[i][1],&squares[i][2]);
-			circ = &c;
-			//Draw the circle
-			circle(image,*(c.GetCenter()), 20, Scalar(0,255,0), 1, CV_AA, 0);
+			circle(image,center[i], (int) radius[i], Scalar(0,255,0), 1, CV_AA, 0);
 			
 
-			geometry_msgs::PoseStamped destination = translatePixelToRealworld(c.GetCenter()->x, c.GetCenter()->y);
+			geometry_msgs::PoseStamped destination = translatePixelToRealworld(center[i].x, center[i].y);
 			
 			posearray.poses[i] = destination.pose;
 
@@ -295,8 +349,6 @@ public:
 private:
 	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y) //x,y Pixels where GHS sign is located
 	{
-// 		static ros::Publisher posePublisher2 = nh_.advertise<geometry_msgs::PoseStamped>("/ghsSignPose2",50);
-		
 		tf::StampedTransform transform;
 		cv::Matx31f image_point(x,y,1);
 		
@@ -321,8 +373,6 @@ private:
 		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
 		
 		
-// 		//green arrow, position in kinect_visionSensor
-// 		posePublisher2.publish(tf_direction);
 
 		geometry_msgs::PointStamped cameraZero;
 		cameraZero.header.frame_id = tf_camera_frame;
@@ -341,12 +391,11 @@ private:
 		
 		double ratio = -camZeroWorld.point.z / directionWorld.z;
 		
-// 		cout<<"height: "<<camZeroWorld.point.z<<" ratio: "<<ratio<<'\n';
 		
 		geometry_msgs::PoseStamped positionOnFloor;
 		positionOnFloor.pose.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
 		positionOnFloor.pose.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
-		positionOnFloor.pose.position.z = camZeroWorld.point.z + directionWorld.z * ratio;
+		positionOnFloor.pose.position.z = 0;//camZeroWorld.point.z + directionWorld.z * ratio;
 		
 		positionOnFloor.header.frame_id = tf_world_frame;
 		positionOnFloor.header.stamp = ros::Time::now();

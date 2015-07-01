@@ -109,7 +109,7 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(squares src/squares.cpp src/circle.cpp)
-add_executable(red src/red.cpp src/circle.cpp)
+add_executable(red src/red.cpp )
 add_executable(water src/water.cpp)
 
 ## Add cmake target dependencies of the executable/library
