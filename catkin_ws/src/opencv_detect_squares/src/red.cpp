@@ -276,22 +276,33 @@ public:
 // 			RotatedRect rect( squares[biggestContour][0], squares[biggestContour][1], squares[biggestContour][2]);
 			
 			RotatedRect rect = minAreaRect(squares[biggestContour]);
-			Mat M,rotated, cropped;
-			
-			float angle = rect.angle;
-			Size rect_size = rect.size;
-			if (rect.angle < -45)
+			try
 			{
-				angle +=90;
-				swap(rect_size.width, rect_size.height);
+				Mat M,rotated, cropped, imgHSV, imgThresholded;
+				
+				float angle = rect.angle;
+				Size rect_size = rect.size;
+				if (rect.angle < -45)
+				{
+					angle +=90;
+					swap(rect_size.width, rect_size.height);
+				}
+				M = getRotationMatrix2D(rect.center, angle, 1.0);
+				
+				warpAffine(cv_ptr->image, rotated, M, cv_ptr->image.size(), INTER_CUBIC);
+				getRectSubPix(rotated, rect_size, rect.center, cropped);
+// 				cropped = rotated(rect.boundingRect());
+				
+				
+				cvtColor(cropped, imgHSV, COLOR_BGR2HSV);
+				
+				inRange(imgHSV, Scalar(0, 0, 0), Scalar(255, 255, 20), imgThresholded); //Threshold the image
+				imshow("Thresholded Image", imgThresholded); //show the thresholded image
 			}
-			M = getRotationMatrix2D(rect.center, angle, 1.0);
-			
-			warpAffine(cv_ptr->image, rotated, M, cv_ptr->image.size(), INTER_CUBIC);
-			//getRectSubPix(rotated, rect_size, rect.center, cropped);
-			cropped = rotated(rect.boundingRect());
-			
-			imshow("Thresholded Image", cropped); //show the thresholded image
+			catch (exception& e)
+			{
+				cout<<e.what()<<'\n';
+			}
 		}
 
 		// Update GUI Window
