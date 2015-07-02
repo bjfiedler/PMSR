@@ -15,10 +15,14 @@
 #include <sensor_msgs/image_encodings.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include "opencv2/features2d/features2d.hpp"
+#include "opencv2/calib3d/calib3d.hpp"
+#include "opencv2/nonfree/nonfree.hpp"
 
 #include <math.h>
 #include <string.h>
 
+#define debug_mode 0
 
 using namespace cv;
 using namespace std;
@@ -42,6 +46,21 @@ vector<vector<Point> > squares;
 vector<Point2f> center;
 vector<float> radius;
 int biggestContour = -1;
+
+
+//SURF feature detection
+Mat img_reference;
+vector<KeyPoint> keypoints_reference;
+Mat descriptors_reference;
+int minHessian = 400;
+// SurfFeatureDetector detector( minHessian );
+SurfDescriptorExtractor extractor;
+FlannBasedMatcher matcher;
+void matchFeatures(Mat& candidate);
+
+float ref_width_1; // 1/3 der referenzbildbreite
+float ref_width_2; // 2/3 der referenzbildbreite
+
 
 
 sensor_msgs::CameraInfo recentCamInfo;
@@ -229,7 +248,7 @@ public:
 		cv::namedWindow(OPENCV_WINDOW);
 		
 		//red detectio window
-		namedWindow("Thresholded Image");
+// 		namedWindow("Thresholded Image");
 		
 // 		//Control Window
 // 		namedWindow("Control", CV_WINDOW_AUTOSIZE); //create a window called "Control"
@@ -294,14 +313,17 @@ public:
 // 				cropped = rotated(rect.boundingRect());
 				
 				
-				cvtColor(cropped, imgHSV, COLOR_BGR2HSV);
+				cvtColor(cropped, imgHSV, COLOR_BGR2GRAY);
 				
-				inRange(imgHSV, Scalar(0, 0, 0), Scalar(255, 255, 20), imgThresholded); //Threshold the image
-				imshow("Thresholded Image", imgThresholded); //show the thresholded image
+// 				inRange(imgHSV, Scalar(0, 0, 0), Scalar(255, 255, 20), imgThresholded); //Threshold the image
+// 				imshow("Thresholded Image", imgHSV); //show the thresholded image
+				matchFeatures(imgHSV);
 			}
 			catch (exception& e)
 			{
+#if debug_mode
 				cout<<e.what()<<'\n';
+#endif
 			}
 		}
 
@@ -418,9 +440,170 @@ private:
 
 };
 
+
+void matchFeatures(Mat& candidate)
+{
+	SurfFeatureDetector detector( minHessian );
+	
+	//-- Step 1: Detect the keypoints using SURF Detector
+	std::vector<KeyPoint> keypoints_object;
+	
+	detector.detect( candidate, keypoints_object );
+	
+	//-- Step 2: Calculate descriptors (feature vectors)
+	Mat descriptors_object;
+	
+	extractor.compute( candidate, keypoints_object, descriptors_object );
+	
+	//-- Step 3: Matching descriptor vectors using FLANN matcher
+	vector< DMatch > matches;
+	matcher.match( descriptors_object, descriptors_reference, matches );
+	
+	double max_dist = 0; double min_dist = 100;
+	
+	//-- Quick calculation of max and min distances between keypoints
+	for( int i = 0; i < descriptors_object.rows; i++ )
+	{ double dist = matches[i].distance;
+		if( dist < min_dist ) min_dist = dist;
+		if( dist > max_dist ) max_dist = dist;
+	}
+	
+// 	printf("-- Max dist : %f \n", max_dist );
+// 	printf("-- Min dist : %f \n", min_dist );
+	
+	//-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
+	vector< DMatch > good_matches;
+	
+	for( int i = 0; i < descriptors_object.rows; i++ )
+	{ if( matches[i].distance < 3*min_dist )
+		{ good_matches.push_back( matches[i]); }
+	}
+	
+#if debug_mode
+	Mat img_matches;
+	drawMatches( candidate, keypoints_object, img_reference, keypoints_reference,
+				 good_matches, img_matches, Scalar::all(-1), Scalar::all(-1),
+				 vector<char>(), DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS );
+	
+#endif
+	//-- Localize the object
+	vector<Point2f> obj;
+	vector<Point2f> scene;
+	
+	for( int i = 0; i < good_matches.size(); i++ )
+	{
+		//-- Get the keypoints from the good matches
+		obj.push_back( keypoints_object[ good_matches[i].queryIdx ].pt );
+		scene.push_back( keypoints_reference[ good_matches[i].trainIdx ].pt );
+	}
+	Mat H;
+	try
+	{
+		H = findHomography( obj, scene, CV_RANSAC );
+	}
+	catch (exception& e)
+	{
+#if debug_mode
+		cout<<"ex\n";
+#endif
+		return;
+	}
+	
+	//-- Get the corners from the image_1 ( the object to be "detected" )
+	vector<Point2f> obj_corners(4);
+	obj_corners[0] = cvPoint(0,0); obj_corners[1] = cvPoint( candidate.cols, 0 );
+	obj_corners[2] = cvPoint( candidate.cols, candidate.rows ); obj_corners[3] = cvPoint( 0, candidate.rows );
+	vector<Point2f> scene_corners(4);
+	
+	perspectiveTransform( obj_corners, scene_corners, H);
+	
+	Point2f meanCorner;
+	meanCorner += scene_corners[0];
+	meanCorner += scene_corners[1];
+	meanCorner += scene_corners[2];
+	meanCorner += scene_corners[3];
+	int meanCornerX = meanCorner.x;
+	
+	
+#if debug_mode
+	//-- Draw lines between the corners (the mapped object in the scene - image_2 )
+	line( img_matches, scene_corners[0] + Point2f( candidate.cols, 0), scene_corners[1] + Point2f( candidate.cols, 0), Scalar(0, 255, 0), 4 );
+	line( img_matches, scene_corners[1] + Point2f( candidate.cols, 0), scene_corners[2] + Point2f( candidate.cols, 0), Scalar( 0, 255, 0), 4 );
+	line( img_matches, scene_corners[2] + Point2f( candidate.cols, 0), scene_corners[3] + Point2f( candidate.cols, 0), Scalar( 0, 255, 0), 4 );
+	line( img_matches, scene_corners[3] + Point2f( candidate.cols, 0), scene_corners[0] + Point2f( candidate.cols, 0), Scalar( 0, 255, 0), 4 );
+	
+	//-- Show detected matches
+	imshow( "Good Matches & Object detection", img_matches );
+	
+	
+	//debug show
+	Mat img_keypoints_2;
+	drawKeypoints( candidate, keypoints_object, img_keypoints_2, Scalar::all(-1), DrawMatchesFlags::DEFAULT );
+	imshow("Keypoints candidate", img_keypoints_2 );
+	
+	
+	Mat debug = img_reference.clone();
+	line( debug, scene_corners[0], scene_corners[1], Scalar(0, 255, 0), 4 );
+	line( debug, scene_corners[1], scene_corners[2], Scalar( 0, 255, 0), 4 );
+	line( debug, scene_corners[2], scene_corners[3], Scalar( 0, 255, 0), 4 );
+	line( debug, scene_corners[3], scene_corners[0], Scalar( 0, 255, 0), 4 );
+	
+	
+	
+	cout<<debug.cols<<"   "<<ref_width_1<<"   "<<ref_width_2<<"   "<<meanCornerX<<'\n';
+	
+	line( debug, Point2f(0,debug.rows /2), Point2f(meanCornerX>>2, debug.rows /2), Scalar(0,255,0), 8);
+	imshow("foo", debug);
+#endif	
+
+	if (meanCornerX <ref_width_1)
+	{
+		cout <<"explosive\n";
+	}
+	else if (meanCornerX < ref_width_2)
+	{
+		cout<<"fire\n";
+	}
+	else
+	{
+		cout<<"toxic\n";
+	}
+	
+	
+	
+}
+
+void detectKeypointsInRefferenceImage(char* filename)
+{
+	SurfFeatureDetector detector( minHessian );
+	
+	img_reference = imread( filename, CV_LOAD_IMAGE_GRAYSCALE );
+		
+	if( !img_reference.data )
+	{ cout<< " --(!) Error reading images " << endl; exit(-1); }
+	
+	//-- Step 1: Detect the keypoints using SURF Detector
+
+	detector.detect(img_reference, keypoints_reference);
+	
+	//-- Step 2: Calculate descriptors (feature vectors)
+	
+	extractor.compute( img_reference, keypoints_reference, descriptors_reference );
+	
+	
+	// compute thirds of image width times 4
+	ref_width_1 = img_reference.cols / 3 *4;
+	ref_width_2 = ref_width_1 * 8;
+	
+}
+
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, nodeName);
+	if (argc >=2)
+		detectKeypointsInRefferenceImage(argv[1]);
+	else
+		return -1;
 	ImageConverter ic;
 	ros::spin();
 	return 0;

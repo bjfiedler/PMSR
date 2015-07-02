@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf
 )
-find_package(OpenCV)
+find_package(OpenCV REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
