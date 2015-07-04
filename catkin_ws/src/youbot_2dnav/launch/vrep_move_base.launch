@@ -27,6 +27,7 @@
     <remap from="move_base_simple/goal" to="hello"/>
     <remap from="cmd_vel" to="cmd_vel_movebase" />
   </node>
-  
-  <node pkg="opencv_detect_squares" type="water" respawn="false" name="water" output="screen" args="vrep" />
+
+  <!-- <node pkg="opencv_detect_squares" type="water" respawn="false" name="water" output="screen" args="vrep" /> -->
+
 </launch>
