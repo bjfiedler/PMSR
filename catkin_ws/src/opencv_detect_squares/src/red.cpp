@@ -14,10 +14,6 @@ const std::string nodeName = "GHS_Sign_Detector";
 
 //squares detection variables
 int thresh = 50, N = 11;
-vector<vector<Point> > squares;
-vector<Point2f> center;
-vector<float> radius;
-int biggestContour = -1;
 
 
 //SURF feature detection
@@ -132,27 +128,54 @@ public:
 			return;
 		}
 		
- 		findSquares(thresholdImage(cv_ptr->image, GHS_l));
-// 		drawSquares(cv_ptr->image,squares, Scalar(0,255,0));
-		publishSquares(cv_ptr->image);
+		Mat img_hsv, img_thresh;
+		vector<barrel> barrels;
 		
-		opencv_detect_squares::DetectedObjectArray objects;
-		if (biggestContour != -1)
+		
+		//Convert to HSV for better color separation
+		cvtColor(cv_ptr->image, img_hsv, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
+		
+		//check every separated color for barrels
+		for (int cur_color = 0; cur_color < NUM_COLORS; cur_color++)
 		{
-			objects.objects.resize(1);
-			objects.header.stamp = ros::Time::now();
-			objects.header.frame_id = tf_world_frame;
-			objects.objects[0].ghs = decideGHS(cv_ptr->image);
-			objects.objects[0].type = "barrell";
-			objects.objects[0].pose = translatePixelToRealworld(center[0].x, center[0].y).pose;
-			objectPublisher.publish(objects);
+			img_thresh = thresholdImage(img_hsv, cur_color);
+			
+			vector<barrel> b = findBarrels(img_thresh);
+			barrels.insert(barrels.end(), b.begin(), b.end());
+			
+			
 		}
-
+		
+		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
+		img_thresh = thresholdImage(img_hsv, GHS_l);
+		checkGHS(img_thresh, barrels);
+		
+		//build the message
+		opencv_detect_squares::DetectedObjectArray objects;
+		objects.objects.resize(barrels.size());
+		objects.header.stamp = ros::Time::now();
+		objects.header.frame_id = tf_world_frame;
+		for (int i = 0; i < barrels.size(); i++)
+		{
+			objects.objects[i].ghs = barrels[i].ghs;
+			objects.objects[i].type = "barrel";
+			objects.objects[i].pose = translatePixelToRealworld(barrels[i].center);
+		}
+		objectPublisher.publish(objects);
+			
+			
+			
+		publishSquares(cv_ptr->image, barrels);
+		
+#if debug_mode
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
 		cv::waitKey(3);
+#endif
 		
 	}
+	
+	
 	void cameraInfoCb(const sensor_msgs::CameraInfo& msg)
 	{
 // 		cout<<"camInfoCB  "<<msg<<'\n';
@@ -174,26 +197,25 @@ public:
 			cameraIntrinsic_inv = cameraIntrinsic.inv();
 	
 	}
-	void publishSquares(Mat& image){
+	void publishSquares(Mat& image, vector<barrel> barrels){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
 // 		circ = 0;
-		if (squares.empty())
+		if (barrels.empty())
 			return;
 		
 		geometry_msgs::PoseArray posearray;
 		posearray.header.stamp = ros::Time::now();
 		posearray.header.frame_id=tf_world_frame;
-		posearray.poses.resize(radius.size());
+		posearray.poses.resize(barrels.size());
 		
-		for (int i = 0; i < radius.size(); i++)
+		for (int i = 0; i < barrels.size(); i++)
 		{
-			circle(image,center[i], (int) radius[i], Scalar(0,255,0), 1, CV_AA, 0);
-			
-
-			geometry_msgs::PoseStamped destination = translatePixelToRealworld(center[i].x, center[i].y);
-			
-			posearray.poses[i] = destination.pose;
+#if debug_mode
+			//draw a circle 
+			circle(image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
+#endif			
+			posearray.poses[i] = barrels[i].pose;
 
 		}
 		//red arrows
@@ -201,10 +223,10 @@ public:
 	}
 	
 private:
-	geometry_msgs::PoseStamped translatePixelToRealworld(int x, int y) //x,y Pixels where GHS sign is located
+	geometry_msgs::Pose translatePixelToRealworld(Point2f pos) //x,y Pixels where GHS sign is located
 	{
 		tf::StampedTransform transform;
-		cv::Matx31f image_point(x,y,1);
+		cv::Matx31f image_point(pos.x,pos.y,1);
 		
 
 		//compute realworld position
@@ -246,15 +268,11 @@ private:
 		double ratio = -camZeroWorld.point.z / directionWorld.z;
 		
 		
-		geometry_msgs::PoseStamped positionOnFloor;
-		positionOnFloor.pose.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
-		positionOnFloor.pose.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
-		positionOnFloor.pose.position.z = 0;//camZeroWorld.point.z + directionWorld.z * ratio;
+		geometry_msgs::Pose positionOnFloor;
+		positionOnFloor.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
+		positionOnFloor.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
+		positionOnFloor.position.z = 0;//camZeroWorld.point.z + directionWorld.z * ratio;
 		
-		positionOnFloor.header.frame_id = tf_world_frame;
-		positionOnFloor.header.stamp = ros::Time::now();
-		
-	
 		return positionOnFloor;
 		
 	}
@@ -266,48 +284,57 @@ private:
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, nodeName);
-	bool vrep = false;
+	bool vrep = false, reference = false;
 // 	if (argc <2)
 // 		cout <<"argc < 2";
 // 		return -1;
 	for (int i = 1; i < argc; i++)
 	{
-		cout <<argv[i];
 		if (strcmp("vrep", argv[i]) ==0)
 			vrep = true;
 		else if (argv[i][0] == '/')
+		{
 			detectKeypointsInRefferenceImage(argv[i]);
-		
-		if (vrep)
-		{
-			cameraInfoTopic = "/kinect/rgbimage/camera_info";
-			cameraImageTopic  = "/kinect/rgbimage/image_raw";
-			tf_camera_frame  = "kinect_visionSensor";
-
+			reference = true;
 			
-			thresholds[GHS_l] = Scalar(118, 209, 211);
-			thresholds[GHS_h] = Scalar(117, 255, 255);
-			
-			thresh = 50, N = 11;
 		}
-		else
-		{
-			cameraInfoTopic = "/depthsense/camera_info";
-			cameraImageTopic  = "/depthsense/image_raw";
-			tf_camera_frame  = "rgb_frame";
+	}
+	if (! reference)
+	{
+		cout<<"Kein Referenzbild angegeben\n";
+		return -1;
+	}
+		
+	if (vrep)
+	{
+		cameraInfoTopic = "/kinect/rgbimage/camera_info";
+		cameraImageTopic  = "/kinect/rgbimage/image_raw";
+		tf_camera_frame  = "kinect_visionSensor";
 
-			
-			thresholds[GHS_l] = Scalar(118, 209, 211);
-			thresholds[GHS_h] = Scalar(117, 255, 255);
-			
-			thresholds[RED_l] = Scalar(137, 44, 178);
-			thresholds[RED_h] = Scalar(179, 255, 255);
-			
-			thresholds[GREEN_l] = Scalar(55, 72, 98);
-			thresholds[GREEN_h] = Scalar(79, 255, 255);
-			
-			thresholds[YELLOW_l] = Scalar(22, 44, 178);
-			thresholds[YELLOW_h] = Scalar(147, 255, 255);
+		
+		thresholds[GHS_l] = Scalar(118, 209, 211);
+		thresholds[GHS_h] = Scalar(117, 255, 255);
+		
+		thresh = 50, N = 11;
+	}
+	else
+	{
+		cameraInfoTopic = "/depthsense/camera_info";
+		cameraImageTopic  = "/depthsense/image_raw";
+		tf_camera_frame  = "rgb_frame";
+
+		
+		thresholds[GHS_l] = Scalar(118, 209, 211);
+		thresholds[GHS_h] = Scalar(117, 255, 255);
+		
+		thresholds[RED_l] = Scalar(137, 44, 178);
+		thresholds[RED_h] = Scalar(179, 255, 255);
+		
+		thresholds[GREEN_l] = Scalar(55, 72, 98);
+		thresholds[GREEN_h] = Scalar(79, 255, 255);
+		
+		thresholds[YELLOW_l] = Scalar(22, 44, 178);
+		thresholds[YELLOW_h] = Scalar(147, 255, 255);
 
 // 			iLowH = 0;
 // 			iHighH = 22;
@@ -317,9 +344,8 @@ int main(int argc, char** argv)
 // 			
 // 			iLowV = 170;
 // 			iHighV = 255;
-			thresh = 50, N = 11;
-		}
-	}	
+		thresh = 50, N = 11;
+	}
 	
 	ImageConverter ic;
 	ros::spin();

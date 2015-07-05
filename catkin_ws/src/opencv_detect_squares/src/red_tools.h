@@ -46,10 +46,6 @@ extern const std::string nodeName;
 
 //squares detection variables
 extern int thresh, N;
-extern vector<vector<Point> > squares;
-extern vector<Point2f> center;
-extern vector<float> radius;
-extern int biggestContour;
 
 
 //SURF feature detection
@@ -74,7 +70,8 @@ extern cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 
 //color separation thresholds
-enum e_colors {GHS_l, GHS_h,RED_l, RED_h, GREEN_l, GREEN_h, YELLOW_l, YELLOW_h, e_colorsMAX = YELLOW_h};
+#define NUM_COLORS 3
+enum e_colors {RED_l, RED_h, GREEN_l, GREEN_h, YELLOW_l, YELLOW_h,GHS_l, GHS_h, e_colorsMAX = GHS_h};
 
 extern Scalar thresholds[e_colorsMAX];
 
@@ -83,9 +80,27 @@ extern Scalar thresholds[e_colorsMAX];
 
 double angle( Point pt1, Point pt2, Point pt0 );
 
-Mat thresholdImage(Mat& image, e_colors col);
-void findSquares( const Mat& gray0);
+Mat thresholdImage(Mat& image, int col);
+RotatedRect findSquares( const Mat& gray0);
 
-const std::string decideGHS(Mat& image);
+struct barrel {
+	//min Circle arround object
+	float radius;
+	Point2f center;
+	
+	//Position in image
+	Rect position;
+	
+	string ghs;
+	string color;
+	
+	//position in tf_world_frame
+	geometry_msgs::Pose pose;
+};
 
+const std::string decideGHS(Mat& image, RotatedRect rect);
+void checkGHS(const Mat& img_thresh, vector<barrel> barrels);
+
+
+vector<barrel> findBarrels(const Mat& img);
 #endif

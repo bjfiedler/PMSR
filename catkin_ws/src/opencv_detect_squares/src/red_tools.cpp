@@ -2,37 +2,44 @@
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-void findSquares( const Mat& gray0)
+RotatedRect findSquares( const Mat& gray0)
 {
+	vector<vector<Point> > squares;
+	vector<Point2f> center;
+	vector<float> radius;
+	int biggestContour = -1;
 	vector<vector<Point> > contours;
+	
 	Mat gray;
 
-	squares.clear();
-	center.clear();
-	radius.clear();
-	biggestContour = -1;
+// 	squares.clear();
+// 	center.clear();
+// 	radius.clear();
+// 	biggestContour = -1;
 	
 		
 		// try several threshold levels
 		for( int l = 0; l < N; l++ )
 		{
-			// hack: use Canny instead of zero threshold level.
-			// Canny helps to catch squares with gradient shading
-			if( l == 0 )
-			{
-				// apply Canny. Take the upper threshold from slider
-				// and set the lower to 0 (which forces edges merging)
-				Canny(gray0, gray, 0, thresh, 5);
-				// dilate canny output to remove potential
-				// holes between edge segments
-				dilate(gray, gray, Mat(), Point(-1,-1));
-			}
-			else
-			{
-				// apply threshold if l!=0:
-				//     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
-				gray = gray0 >= (l+1)*255/N;
-			}
+// 			// hack: use Canny instead of zero threshold level.
+// 			// Canny helps to catch squares with gradient shading
+// 			if( l == 0 )
+// 			{
+// 				// apply Canny. Take the upper threshold from slider
+// 				// and set the lower to 0 (which forces edges merging)
+// 				Canny(gray0, gray, 0, thresh, 5);
+// 				// dilate canny output to remove potential
+// 				// holes between edge segments
+// 				dilate(gray, gray, Mat(), Point(-1,-1));
+// 			}
+// 			else
+// 			{
+// 				// apply threshold if l!=0:
+// 				//     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
+// 				gray = gray0 >= (l+1)*255/N;
+// 			}
+
+			dilate(gray, gray, Mat(), Point(-1,-1));
 			
 			// find contours and store them all as a list
 			findContours(gray, contours, RETR_LIST, CHAIN_APPROX_SIMPLE);
@@ -102,7 +109,34 @@ void findSquares( const Mat& gray0)
 			
 		}
 
+		if (biggestContour != -1)
+			return minAreaRect(squares[biggestContour]);
+		return RotatedRect(Point2f(0,0), Size2f(0,0), 0);
 }
+
+
+vector<barrel> findBarrels(const Mat& img)
+{
+	vector<barrel> barrels;
+	
+
+	
+	return barrels;
+}
+
+void checkGHS(const Mat& img, vector<barrel> barrels)
+{
+	Mat img_roi;
+	for (int i = 0; i < barrels.size(); i++)
+	{
+		img_roi = img(barrels[i].position);
+		RotatedRect roi = findSquares(img_roi);
+		barrels[i].ghs = decideGHS(img_roi, roi);
+	}
+}
+
+
+
 
 
 
@@ -269,11 +303,9 @@ const std::string matchFeatures(Mat& candidate)
 
 
 
-Mat thresholdImage(Mat& image, e_colors col)
+Mat thresholdImage(Mat& imgHSV, int col)
 {
-	Mat imgHSV;
-	
-	cvtColor(image, imgHSV, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
+
 	
 	Mat imgThresholded;
 	
@@ -300,10 +332,9 @@ double angle( Point pt1, Point pt2, Point pt0 )
 }
 
 
-const std::string decideGHS(Mat& image)
+const std::string decideGHS(Mat& image, RotatedRect rect)
 {
 	
-	RotatedRect rect = minAreaRect(squares[biggestContour]);
 	try
 	{
 		Mat M,rotated, cropped, imgGray, imgThresholded;
