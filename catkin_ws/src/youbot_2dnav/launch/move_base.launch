@@ -1,14 +1,23 @@
 <launch>
   <master auto="start"/>
 
-  <!--- Run State Publisher -->
-  <include file="$(find vrep_youbot_plugin)/launch/vrep_youbot.launch" />
+  <!--- Run State Publisher 
+  <include file="$(find vrep_youbot_plugin)/launch/vrep_youbot.launch" /> -->
 
   <!-- Run the map server -->
-  <node name="map_server" pkg="map_server" type="map_server" args="$(find youbot_2dnav)/map/map.yaml"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find youbot_2dnav)/map_real/map.yaml"/>
 
-  <!--- Run AMCL -->
-  <include file="$(find youbot_2dnav)/launch/amcl_omni.launch" />
+  <!--- Run AMCL 
+  <include file="$(find youbot_2dnav)/launch/amcl_omni.launch" /> -->
+
+  <!--- Turn base link around -->
+  <node pkg="tf" type="static_transform_publisher" name="base_link_turner" args="0 0 0 3.1415 0 0 base_link base_link_turned 500" />
+
+  <!--- Run node to turn twist -->
+  <node pkg="youbot_2dnav" type="turn_twist" name="turn_twist"/>
+
+  <!--- Filter laser scan -->
+  <include file="$(find laser_filters)/test/my_laser_filter.launch" />
 
   <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
     <param name="base_local_planner" value="dwa_local_planner/DWAPlannerROS" />
@@ -18,5 +27,10 @@
     <rosparam file="$(find youbot_2dnav)/config/local_costmap_params.yaml" command="load" />
     <rosparam file="$(find youbot_2dnav)/config/global_costmap_params.yaml" command="load" />
     <rosparam file="$(find youbot_2dnav)/config/base_local_planner_params.yaml" command="load" />
+    <remap from="move_base_simple/goal" to="hello"/>
+    <remap from="cmd_vel" to="cmd_vel_movebase" />
   </node>
+
+  <!-- <node pkg="opencv_detect_squares" type="water" respawn="false" name="water" output="screen" args="" /> -->
+
 </launch>

@@ -19,7 +19,7 @@ DWAPlannerROS:
 
   holonomic_robot: true
 
-  yaw_goal_tolerance: 0.2
+  yaw_goal_tolerance: 0.1
   xy_goal_tolerance: 0.1
   latch_xy_goal_tolerance: false
 
@@ -28,7 +28,7 @@ DWAPlannerROS:
   vx_samples: 8
   vy_samples: 5
   vtheta_samples: 20
-  penalize_negative_x: false
+  penalize_negative_x: true
 
   path_distance_bias: 32.0
   goal_distance_bias: 24.0

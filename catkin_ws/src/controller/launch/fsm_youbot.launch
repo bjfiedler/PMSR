@@ -1,0 +1,4 @@
+<launch>
+    <node name="youbot" pkg="controller" type="youbot"> </node>
+    <node name="rqt" pkg="rqt_gui" type="rqt_gui" args="-s rqt_decision_graph" output="screen" />       
+</launch>
