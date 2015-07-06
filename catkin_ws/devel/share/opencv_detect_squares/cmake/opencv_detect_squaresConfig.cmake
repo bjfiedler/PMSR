@@ -91,9 +91,9 @@ endif()
 # flag project as catkin-based to distinguish if a find_package()-ed project is a catkin project
 set(opencv_detect_squares_FOUND_CATKIN_PROJECT TRUE)
 
-if(NOT " " STREQUAL " ")
+if(NOT "/home/bjoern/PMSR/catkin_ws/devel/include " STREQUAL " ")
   set(opencv_detect_squares_INCLUDE_DIRS "")
-  set(_include_dirs "")
+  set(_include_dirs "/home/bjoern/PMSR/catkin_ws/devel/include")
   foreach(idir ${_include_dirs})
     if(IS_ABSOLUTE ${idir} AND IS_DIRECTORY ${idir})
       set(include ${idir})
@@ -145,7 +145,7 @@ foreach(library ${libraries})
   endif()
 endforeach()
 
-set(opencv_detect_squares_EXPORTED_TARGETS "")
+set(opencv_detect_squares_EXPORTED_TARGETS "opencv_detect_squares_generate_messages_cpp;opencv_detect_squares_generate_messages_lisp;opencv_detect_squares_generate_messages_py")
 # create dummy targets for exported code generation targets to make life of users easier
 foreach(t ${opencv_detect_squares_EXPORTED_TARGETS})
   if(NOT TARGET ${t})
@@ -153,7 +153,7 @@ foreach(t ${opencv_detect_squares_EXPORTED_TARGETS})
   endif()
 endforeach()
 
-set(depends "cv_bridge;image_transport;roscpp;sensor_msgs;std_msgs;tf")
+set(depends "cv_bridge;image_transport;roscpp;sensor_msgs;std_msgs;geometry_msgs;tf;message_runtime")
 foreach(depend ${depends})
   string(REPLACE " " ";" depend_list ${depend})
   # the package name of the dependency must be kept in a unique variable so that it is not overwritten in recursive calls
@@ -182,7 +182,7 @@ foreach(depend ${depends})
   list(APPEND opencv_detect_squares_EXPORTED_TARGETS ${${opencv_detect_squares_dep}_EXPORTED_TARGETS})
 endforeach()
 
-set(pkg_cfg_extras "")
+set(pkg_cfg_extras "opencv_detect_squares-msg-extras.cmake")
 foreach(extra ${pkg_cfg_extras})
   if(NOT IS_ABSOLUTE ${extra})
     set(extra ${opencv_detect_squares_DIR}/${extra})

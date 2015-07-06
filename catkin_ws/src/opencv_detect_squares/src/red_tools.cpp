@@ -4,7 +4,7 @@
 // the sequence is stored in the specified memory storage
 static std::string color_names[] = {"red", "green", "yellow"};
 
-RotatedRect findSquares( const Mat& gray0)
+RotatedRect findSquares( const Mat& gray0, int cur_color)
 {
 	vector<vector<Point> > squares;
 	vector<Point2f> center;
@@ -41,7 +41,7 @@ RotatedRect findSquares( const Mat& gray0)
 				gray = gray0 >= (l+1)*255/N;
 			}
 
-			dilate(gray, gray, Mat(), Point(-1,-1));
+// 			dilate(gray, gray, Mat(), Point(-1,-1));
 			
 			// find contours and store them all as a list
 			findContours(gray, contours, RETR_LIST, CHAIN_APPROX_SIMPLE);
@@ -82,6 +82,7 @@ RotatedRect findSquares( const Mat& gray0)
 				}
 			}
 		}
+// 		cout<<squares.size();
 		for (int i = 0; i < squares.size(); i++)
 		{
 			float t_radius;
@@ -157,17 +158,30 @@ vector<barrel> findBarrels(const Mat& img, int cur_color)
 	return barrels;
 }
 
-void checkGHS(const Mat& img, vector<barrel> barrels)
+void checkGHS(const Mat& img, vector<barrel> *barrelp, const Mat& img_color, int cur_color)
 {
 	Mat img_roi;
-	for (int i = 0; i < barrels.size(); i++)
+	for (int i = 0; i < barrelp->size(); i++)
 	{
-		img_roi = img(barrels[i].position);
-		RotatedRect roi = findSquares(img_roi);
-		if (roi.size.width<0.001)
-			barrels[i].ghs = "none";
+		img_roi = img((*barrelp)[i].position);
+#if debug_mode
+		string s = "ac";
+		s[0] = 48+cur_color;
+		imshow(s, img_roi);
+#endif
+		RotatedRect roi = findSquares(img_roi, cur_color);
+		
+		if (roi.size.width<1)
+		{
+			(*barrelp)[i].ghs = "none";
+			cout<<"roi to small\n";
+		}
+		
 		else
-			barrels[i].ghs = decideGHS(img_roi, roi);
+		{
+			(*barrelp)[i].ghs = decideGHS(img_color((*barrelp)[i].position), roi, cur_color);
+// 			cout<<"roi ok\n";
+		}
 	}
 }
 
@@ -196,13 +210,13 @@ void detectKeypointsInRefferenceImage(char* filename)
 	
 	// compute thirds of image width times 4
 	ref_width_1 = img_reference.cols / 3 *4;
-	ref_width_2 = ref_width_1 * 8;
+	ref_width_2 = ref_width_1 * 2;
 	
 }
 
 
 
-const std::string matchFeatures(Mat& candidate)
+const std::string matchFeatures(Mat& candidate, int cur_color)
 {
 	SurfFeatureDetector detector( minHessian );
 	
@@ -264,10 +278,10 @@ const std::string matchFeatures(Mat& candidate)
 	}
 	catch (exception& e)
 	{
-		#if debug_mode
-		cout<<"ex\n";
+		#if debug_mode_verbose
+		cout<<e.what();
 		#endif
-		return "none";
+		return "unknown";
 	}
 	
 	//-- Get the corners from the image_1 ( the object to be "detected" )
@@ -294,13 +308,19 @@ const std::string matchFeatures(Mat& candidate)
 	line( img_matches, scene_corners[3] + Point2f( candidate.cols, 0), scene_corners[0] + Point2f( candidate.cols, 0), Scalar( 0, 255, 0), 4 );
 	
 	//-- Show detected matches
-	imshow( "Good Matches & Object detection", img_matches );
+	string s = "ad";
+	s[0] = 48+cur_color;
+	string s2 = "ae";
+	s2[0] = 48+cur_color;
+	string s3 = "af";
+	s3[0] = 48+cur_color;
 	
+	imshow( s, img_matches );
 	
 	//debug show
 	Mat img_keypoints_2;
 	drawKeypoints( candidate, keypoints_object, img_keypoints_2, Scalar::all(-1), DrawMatchesFlags::DEFAULT );
-	imshow("Keypoints candidate", img_keypoints_2 );
+	imshow(s2, img_keypoints_2 );
 	
 	
 	Mat debug = img_reference.clone();
@@ -311,25 +331,25 @@ const std::string matchFeatures(Mat& candidate)
 	
 	
 	
-	cout<<debug.cols<<"   "<<ref_width_1<<"   "<<ref_width_2<<"   "<<meanCornerX<<'\n';
+// 	cout<<debug.cols<<"   "<<ref_width_1<<"   "<<ref_width_2<<"   "<<meanCornerX<<'\n';
 	
 	line( debug, Point2f(0,debug.rows /2), Point2f(meanCornerX>>2, debug.rows /2), Scalar(0,255,0), 8);
-	imshow("foo", debug);
+	imshow(s3, debug);
 	#endif	
 	
 	if (meanCornerX <ref_width_1)
 	{
-		cout <<"explosive\n";
+// 		cout <<"explosive\n";
 		return "explosive";
 	}
 	else if (meanCornerX < ref_width_2)
 	{
-		cout<<"fire\n";
+// 		cout<<"fire\n";
 		return "fire";
 	}
 	else
 	{
-		cout<<"toxic\n";
+// 		cout<<"toxic\n";
 		return "toxic";
 	}
 	
@@ -368,7 +388,7 @@ double angle( Point pt1, Point pt2, Point pt0 )
 }
 
 
-const std::string decideGHS(Mat& image, RotatedRect rect)
+const std::string decideGHS(const Mat& image, RotatedRect rect, int cur_color)
 {
 	
 	try
@@ -387,18 +407,23 @@ const std::string decideGHS(Mat& image, RotatedRect rect)
 		warpAffine(image, rotated, M, image.size(), INTER_CUBIC);
 		getRectSubPix(rotated, rect_size, rect.center, cropped);
 		// 				cropped = rotated(rect.boundingRect());
+#if debug_mode
+		string s = "ab";
+		s[0] = 48+cur_color;
+		imshow(s, cropped);
+#endif
 		
 		
 		cvtColor(cropped, imgGray, COLOR_BGR2GRAY);
 		
-		return matchFeatures(imgGray);
+		return matchFeatures(imgGray, cur_color);
 	}
 	catch (exception& e)
 	{
-		#if debug_mode
+		#if debug_mode_verbose
 		cout<<e.what()<<'\n';
 		#endif
-		return "none";
+		return "unknown";
 	}
 	
 }

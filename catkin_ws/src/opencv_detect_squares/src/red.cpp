@@ -139,12 +139,19 @@ public:
 		for (int cur_color = 0; cur_color < NUM_COLORS; cur_color++)
 		{
 			img_thresh = thresholdImage(img_hsv, cur_color);
-			
+#if debug_mode
+			string s = "aa";
+			s[0] = 48+cur_color;
+			imshow(s, img_thresh);
+#endif
 			vector<barrel> b = findBarrels(img_thresh, cur_color);
+			checkGHS(img_thresh, &b, cv_ptr->image, cur_color);
+			
 			barrels.insert(barrels.end(), b.begin(), b.end());
 			
 		}
 		
+#if debug_mode
 		for (int i = 0; i < barrels.size(); i++)
 		{
 			circle(cv_ptr->image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
@@ -152,8 +159,10 @@ public:
 		}
 		
 		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
-		img_thresh = thresholdImage(img_hsv, GHS_l);
-		checkGHS(img_thresh, barrels);
+// 		img_thresh = thresholdImage(img_hsv, 3);
+// 		imshow("bar", img_thresh);
+#endif
+// 		checkGHS(img_thresh, &barrels, cv_ptr->image);
 		
 		//build the message
 		opencv_detect_squares::DetectedObjectArray objects;
@@ -163,6 +172,7 @@ public:
 		for (int i = 0; i < barrels.size(); i++)
 		{
 			objects.objects[i].ghs = barrels[i].ghs;
+// 			cout<<"   --  "<<barrels[i].ghs<<'\n';
 			objects.objects[i].type = "barrel";
 			objects.objects[i].pose = translatePixelToRealworld(barrels[i].center);
 			objects.objects[i].color = barrels[i].color;
@@ -341,8 +351,8 @@ int main(int argc, char** argv)
 		tf_camera_frame  = "rgb_frame";
 
 		
-		thresholds[GHS_l] = Scalar(118, 209, 211);
-		thresholds[GHS_h] = Scalar(117, 255, 255);
+		thresholds[GHS_l] = Scalar(0, 0, 170);
+		thresholds[GHS_h] = Scalar(22, 255, 255);
 		
 		thresholds[RED_l] = Scalar(137, 44, 178);
 		thresholds[RED_h] = Scalar(179, 255, 255);

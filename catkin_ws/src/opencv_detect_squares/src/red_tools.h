@@ -27,6 +27,7 @@
 #include "opencv_detect_squares/DetectedObjectArray.h"
 
 #define debug_mode 1
+#define debug_mode_verbose 0
 
 using namespace cv;
 using namespace std;
@@ -98,8 +99,8 @@ struct barrel {
 	geometry_msgs::Pose pose;
 };
 
-const std::string decideGHS(Mat& image, RotatedRect rect);
-void checkGHS(const Mat& img_thresh, vector<barrel> barrels);
+const std::string decideGHS(const Mat& image, RotatedRect rect, int cur_color);
+void checkGHS(const Mat& img_thresh, vector<barrel> *barrelp, const Mat& img_color, int cur_color);
 
 
 vector<barrel> findBarrels(const Mat& img, int cur_color);
