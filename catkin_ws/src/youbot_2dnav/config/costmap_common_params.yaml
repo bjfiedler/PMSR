@@ -3,9 +3,10 @@ raytrace_range: 3.0
 footprint: [[0.290,0.190], [0.290,-0.190], [-0.290,-0.190], [-0.290,0.190]]
 #robot_radius: ir_of_robot
 inflation_radius: 0.25
-
-observation_sources: laser_scan_sensor point_cloud_sensor
-
-laser_scan_sensor: {sensor_frame: base_laser_back_link, data_type: LaserScan, topic: scan_back, marking: true, clearing: true}
-
-point_cloud_sensor: {sensor_frame: kinect_depthSensor, data_type: PointCloud2, topic: kinect,marking: true, clearing: true, min_obstacle_height: 0.01}
+plugins: 
+    - {name: static_map,       type: "costmap_2d::StaticLayer"}
+    - {name: obstacles,        type: "costmap_2d::VoxelLayer"}
+publish_frequency: 1.0
+obstacles:
+    observation_sources: laser_scan_sensor
+    laser_scan_sensor: {sensor_frame: base_laser_back_link, data_type: LaserScan, topic: scan_back, marking: true, clearing: true}
