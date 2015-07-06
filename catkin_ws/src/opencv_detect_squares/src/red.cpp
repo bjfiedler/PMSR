@@ -140,10 +140,15 @@ public:
 		{
 			img_thresh = thresholdImage(img_hsv, cur_color);
 			
-			vector<barrel> b = findBarrels(img_thresh);
+			vector<barrel> b = findBarrels(img_thresh, cur_color);
 			barrels.insert(barrels.end(), b.begin(), b.end());
 			
-			
+		}
+		
+		for (int i = 0; i < barrels.size(); i++)
+		{
+			circle(cv_ptr->image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
+			rectangle( cv_ptr->image, barrels[i].position.tl(), barrels[i].position.br(), Scalar(127,255,0), 2, 8, 0 );
 		}
 		
 		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
@@ -160,6 +165,7 @@ public:
 			objects.objects[i].ghs = barrels[i].ghs;
 			objects.objects[i].type = "barrel";
 			objects.objects[i].pose = translatePixelToRealworld(barrels[i].center);
+			objects.objects[i].color = barrels[i].color;
 		}
 		objectPublisher.publish(objects);
 			
@@ -246,7 +252,13 @@ private:
 // 		tf_direction.pose.orientation.w = 1;
 		tf_direction.header.frame_id = tf_camera_frame;
 		tf_direction.header.stamp = ros::Time(0);
-		listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
+		try{
+			listener.transformPose(tf_world_frame, tf_direction, tf_direction_world);
+		}
+		catch (exception &e)
+		{
+			
+		}
 		
 		
 
@@ -254,7 +266,12 @@ private:
 		cameraZero.header.frame_id = tf_camera_frame;
 		cameraZero.header.stamp = ros::Time(0);
 		geometry_msgs::PointStamped camZeroWorld;
-		listener.transformPoint(tf_world_frame, cameraZero, camZeroWorld);
+		try{
+			listener.transformPoint(tf_world_frame, cameraZero, camZeroWorld);
+		}
+		catch (exception &e)
+		{
+		}
 		
 		
 		
@@ -265,13 +282,13 @@ private:
 		
 		
 		
-		double ratio = -camZeroWorld.point.z / directionWorld.z;
+		double ratio = (0.1-camZeroWorld.point.z) / directionWorld.z;
 		
 		
 		geometry_msgs::Pose positionOnFloor;
 		positionOnFloor.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
 		positionOnFloor.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
-		positionOnFloor.position.z = 0;//camZeroWorld.point.z + directionWorld.z * ratio;
+		positionOnFloor.position.z = camZeroWorld.point.z + directionWorld.z * ratio;
 		
 		return positionOnFloor;
 		

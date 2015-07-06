@@ -2,6 +2,8 @@
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
+static std::string color_names[] = {"red", "green", "yellow"};
+
 RotatedRect findSquares( const Mat& gray0)
 {
 	vector<vector<Point> > squares;
@@ -10,7 +12,7 @@ RotatedRect findSquares( const Mat& gray0)
 	int biggestContour = -1;
 	vector<vector<Point> > contours;
 	
-	Mat gray;
+	Mat gray = gray0;
 
 // 	squares.clear();
 // 	center.clear();
@@ -21,23 +23,23 @@ RotatedRect findSquares( const Mat& gray0)
 		// try several threshold levels
 		for( int l = 0; l < N; l++ )
 		{
-// 			// hack: use Canny instead of zero threshold level.
-// 			// Canny helps to catch squares with gradient shading
-// 			if( l == 0 )
-// 			{
-// 				// apply Canny. Take the upper threshold from slider
-// 				// and set the lower to 0 (which forces edges merging)
-// 				Canny(gray0, gray, 0, thresh, 5);
-// 				// dilate canny output to remove potential
-// 				// holes between edge segments
-// 				dilate(gray, gray, Mat(), Point(-1,-1));
-// 			}
-// 			else
-// 			{
-// 				// apply threshold if l!=0:
-// 				//     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
-// 				gray = gray0 >= (l+1)*255/N;
-// 			}
+			// hack: use Canny instead of zero threshold level.
+			// Canny helps to catch squares with gradient shading
+			if( l == 0 )
+			{
+				// apply Canny. Take the upper threshold from slider
+				// and set the lower to 0 (which forces edges merging)
+				Canny(gray0, gray, 0, thresh, 5);
+				// dilate canny output to remove potential
+				// holes between edge segments
+				dilate(gray, gray, Mat(), Point(-1,-1));
+			}
+			else
+			{
+				// apply threshold if l!=0:
+				//     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
+				gray = gray0 >= (l+1)*255/N;
+			}
 
 			dilate(gray, gray, Mat(), Point(-1,-1));
 			
@@ -115,10 +117,41 @@ RotatedRect findSquares( const Mat& gray0)
 }
 
 
-vector<barrel> findBarrels(const Mat& img)
+vector<barrel> findBarrels(const Mat& img, int cur_color)
 {
 	vector<barrel> barrels;
+	vector<vector<Point> > contours;
 	
+	
+// 	dilate(img, img, Mat(), Point(-1,-1));
+	
+	// find contours and store them all as a list
+	findContours(img, contours, RETR_LIST, CHAIN_APPROX_SIMPLE);
+	
+	vector<Point> approx;
+	
+	// test each contour
+	for( size_t i = 0; i < contours.size(); i++ )
+	{
+		
+		
+		// approximate contour with accuracy proportional
+		// to the contour perimeter
+		approxPolyDP(Mat(contours[i]), approx, arcLength(Mat(contours[i]), true)*0.02, true);
+		
+		if (fabs(cv::contourArea((Mat)approx)) < 100 || !cv::isContourConvex(approx))
+			continue;
+
+		if (approx.size() > 6)
+		{
+			barrel b;
+			minEnclosingCircle((Mat)approx, b.center, b.radius);
+			b.position = boundingRect((Mat)approx);
+			b.color = color_names[cur_color];
+			barrels.push_back(b);
+			
+		}
+	}
 
 	
 	return barrels;
@@ -131,7 +164,10 @@ void checkGHS(const Mat& img, vector<barrel> barrels)
 	{
 		img_roi = img(barrels[i].position);
 		RotatedRect roi = findSquares(img_roi);
-		barrels[i].ghs = decideGHS(img_roi, roi);
+		if (roi.size.width<0.001)
+			barrels[i].ghs = "none";
+		else
+			barrels[i].ghs = decideGHS(img_roi, roi);
 	}
 }
 
@@ -309,7 +345,7 @@ Mat thresholdImage(Mat& imgHSV, int col)
 	
 	Mat imgThresholded;
 	
-	inRange(imgHSV, thresholds[col], thresholds[col+1], imgThresholded); //Threshold the image
+	inRange(imgHSV, thresholds[2*col], thresholds[2*col+1], imgThresholded); //Threshold the image
 	
 	//imshow("Thresholded Image", imgThresholded); //show the thresholded image
 	return imgThresholded;

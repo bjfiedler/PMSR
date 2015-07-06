@@ -102,5 +102,5 @@ const std::string decideGHS(Mat& image, RotatedRect rect);
 void checkGHS(const Mat& img_thresh, vector<barrel> barrels);
 
 
-vector<barrel> findBarrels(const Mat& img);
+vector<barrel> findBarrels(const Mat& img, int cur_color);
 #endif
