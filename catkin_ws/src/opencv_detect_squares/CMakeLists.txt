@@ -113,8 +113,10 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(squares src/squares.cpp src/circle.cpp)
-add_executable(red src/red.cpp )
+add_executable(red src/red.cpp src/red_tools.cpp)
 add_executable(water src/water.cpp)
+add_executable(dummyPublisher src/dummyPublisher.cpp)
+add_executable(hsvSeparator src/hsvSeparator.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -130,6 +132,14 @@ target_link_libraries(red
 					  ${OpenCV_LIBRARIES}
 					  )
 target_link_libraries(water
+					  ${catkin_LIBRARIES}
+					  ${OpenCV_LIBRARIES}
+					  )
+target_link_libraries(dummyPublisher
+					  ${catkin_LIBRARIES}
+					  ${OpenCV_LIBRARIES}
+					  )
+target_link_libraries(hsvSeparator
 					  ${catkin_LIBRARIES}
 					  ${OpenCV_LIBRARIES}
 					  )
