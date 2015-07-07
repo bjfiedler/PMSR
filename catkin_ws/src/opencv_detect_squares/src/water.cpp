@@ -413,8 +413,8 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		cameraInfoTopic = "/camera_info";
-		cameraImageTopic  = "/rgb_image";
+		cameraInfoTopic = "/depthsense/camera_info";
+		cameraImageTopic  = "/depthsense/image_raw";
 		tf_camera_frame  = "rgb_frame";
 		//red detectoion variables
 		iLowH = 88;
