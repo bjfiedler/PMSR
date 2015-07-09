@@ -164,6 +164,8 @@ public:
 #endif
 // 		checkGHS(img_thresh, &barrels, cv_ptr->image);
 		
+		if (barrels.size() == 0)
+			return;
 		//build the message
 		opencv_detect_squares::DetectedObjectArray objects;
 		objects.objects.resize(barrels.size());
