@@ -26,7 +26,7 @@ static const std::string OPENCV_WINDOW = "Image window";
 static std::string cameraInfoTopic;// = "/cameraInfo";
 static std::string cameraImageTopic;// = "/rgb_image";
 
-static const std::string nodeName = "Water_Detector";
+static const std::string nodeName = "hsv_seperator";
 
 
 //thresholding parameters
