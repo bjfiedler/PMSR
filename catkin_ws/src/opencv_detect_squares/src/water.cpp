@@ -210,7 +210,17 @@ public:
 		
 		for (int i = 0; i < square.size(); i++)
 		{
-			geometry_msgs::Point p = translatePixelToRealworld(square[i].x, square[i].y).position;
+			geometry_msgs::Point p;
+			try
+			{
+				geometry_msgs::Point p = translatePixelToRealworld(square[i].x, square[i].y).position;
+			}
+			catch (exception &e)
+			{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+
+			}
 			poly.polygon.points[i].x = p.x;
 			poly.polygon.points[i].y = p.y;
 			poly.polygon.points[i].z = p.z;
