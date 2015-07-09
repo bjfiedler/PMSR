@@ -387,7 +387,7 @@ private:
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "image_converter");
+	ros::init(argc, argv, nodeName);
 	bool vrep = false;
 	for (int i = 0; i < argc; i++)
 		if (strcmp("vrep", argv[i]) ==0)
