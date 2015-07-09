@@ -210,7 +210,17 @@ public:
 		
 		for (int i = 0; i < square.size(); i++)
 		{
-			geometry_msgs::Point p = translatePixelToRealworld(square[i].x, square[i].y).position;
+			geometry_msgs::Point p;
+			try
+			{
+				geometry_msgs::Point p = translatePixelToRealworld(square[i].x, square[i].y).position;
+			}
+			catch (exception &e)
+			{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+
+			}
 			poly.polygon.points[i].x = p.x;
 			poly.polygon.points[i].y = p.y;
 			poly.polygon.points[i].z = p.z;
@@ -387,7 +397,7 @@ private:
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "image_converter");
+	ros::init(argc, argv, nodeName);
 	bool vrep = false;
 	for (int i = 0; i < argc; i++)
 		if (strcmp("vrep", argv[i]) ==0)
@@ -413,8 +423,8 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		cameraInfoTopic = "/camera_info";
-		cameraImageTopic  = "/rgb_image";
+		cameraInfoTopic = "/depthsense/camera_info";
+		cameraImageTopic  = "/depthsense/image_raw";
 		tf_camera_frame  = "rgb_frame";
 		//red detectoion variables
 		iLowH = 88;

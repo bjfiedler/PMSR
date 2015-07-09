@@ -164,6 +164,8 @@ public:
 #endif
 // 		checkGHS(img_thresh, &barrels, cv_ptr->image);
 		
+		if (barrels.size() == 0)
+			return;
 		//build the message
 		opencv_detect_squares::DetectedObjectArray objects;
 		objects.objects.resize(barrels.size());
@@ -354,14 +356,14 @@ int main(int argc, char** argv)
 		thresholds[GHS_l] = Scalar(0, 0, 170);
 		thresholds[GHS_h] = Scalar(22, 255, 255);
 		
-		thresholds[RED_l] = Scalar(137, 44, 178);
+		thresholds[RED_l] = Scalar(0, 139, 242);
 		thresholds[RED_h] = Scalar(179, 255, 255);
 		
-		thresholds[GREEN_l] = Scalar(55, 72, 98);
-		thresholds[GREEN_h] = Scalar(79, 255, 255);
+		thresholds[GREEN_l] = Scalar(62, 138, 89);
+		thresholds[GREEN_h] = Scalar(131, 255, 149);
 		
-		thresholds[YELLOW_l] = Scalar(22, 44, 178);
-		thresholds[YELLOW_h] = Scalar(147, 255, 255);
+		thresholds[YELLOW_l] = Scalar(19, 57, 238);
+		thresholds[YELLOW_h] = Scalar(179, 152, 255);
 
 // 			iLowH = 0;
 // 			iHighH = 22;

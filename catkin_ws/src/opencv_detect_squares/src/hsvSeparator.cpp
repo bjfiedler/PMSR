@@ -26,7 +26,7 @@ static const std::string OPENCV_WINDOW = "Image window";
 static std::string cameraInfoTopic;// = "/cameraInfo";
 static std::string cameraImageTopic;// = "/rgb_image";
 
-static const std::string nodeName = "Water_Detector";
+static const std::string nodeName = "hsv_seperator";
 
 
 //thresholding parameters
@@ -121,7 +121,7 @@ public:
 
 int main(int argc, char** argv)
 {
-	ros::init(argc, argv, "image_converter");
+	ros::init(argc, argv, nodeName);
 	bool vrep = false;
 	for (int i = 0; i < argc; i++)
 		if (strcmp("vrep", argv[i]) == 0)
