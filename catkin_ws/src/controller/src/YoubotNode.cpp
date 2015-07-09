@@ -16,11 +16,14 @@
 #include <tf/transform_datatypes.h>
 #include <math.h>
 #include <std_msgs/Float64.h>
+#include <moveit/move_group_interface/move_group.h>
 
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
+#include <brics_actuator/JointPositions.h>
 
 #include "Youbot.h"
+#include "tf/transform_listener.h"
 
 using namespace std;
 
@@ -30,12 +33,84 @@ typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseCl
 
 ros::NodeHandle* node;
 geometry_msgs::PoseStamped nav_goal;
-ros::Publisher pub;
+ros::Publisher init_pub;
 ros::Duration five_seconds(5, 0);
+ros::Duration three_seconds(3, 0);
+ros::Duration one_second(1, 0);
 geometry_msgs::PoseArray objects;
 geometry_msgs::PoseArray standardPoses;
+geometry_msgs::PoseStamped target;
 
 boost::shared_ptr<MoveBaseClient> ac;
+
+boost::shared_ptr<moveit::planning_interface::MoveGroup> my_moveit;
+
+ros::Publisher brics_pub;
+ros::Publisher cmd_pub;
+
+bool moveToNamedTarget(string target){
+    my_moveit->setNamedTarget(target);
+    return my_moveit->move();
+}
+
+bool driveForward() {
+
+    for (int i = 0; i < 3; ++i) {
+        geometry_msgs::Twist forward;
+        forward.linear.x = 0.1;
+
+        cmd_pub.publish(forward);
+
+        one_second.sleep();
+
+    }
+
+    return true;
+}
+
+bool openGripper() {
+
+    brics_actuator::JointPositions pos;
+    brics_actuator::JointValue r;
+    r.joint_uri = "gripper_finger_joint_r";
+    r.unit = "m";
+    r.value = 0.001;
+    pos.positions.push_back(r);
+
+    brics_actuator::JointValue l;
+    l.joint_uri = "gripper_finger_joint_l";
+    l.unit = "m";
+    l.value = 0.001;
+    pos.positions.push_back(l);
+
+    brics_pub.publish(pos);
+
+    three_seconds.sleep();
+
+    return true;
+}
+
+bool closeGripper() {
+
+    brics_actuator::JointPositions pos;
+    brics_actuator::JointValue r;
+    r.joint_uri = "gripper_finger_joint_r";
+    r.unit = "m";
+    r.value = 0.01;
+    pos.positions.push_back(r);
+
+    brics_actuator::JointValue l;
+    l.joint_uri = "gripper_finger_joint_l";
+    l.unit = "m";
+    l.value = 0.01;
+    pos.positions.push_back(l);
+
+    brics_pub.publish(pos);
+
+    three_seconds.sleep();
+
+    return true;
+}
 
 decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
@@ -45,26 +120,26 @@ decision_making::TaskResult initialize(std::string, const decision_making::FSMCa
 
     geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(roll, pitch, yaw);
 
-//    geometry_msgs::Pose pose1;
-//    pose1.position.x = -0.34;
-//    pose1.position.y = 0;
-//    pose1.position.z = 0;
-//    pose1.orientation = quat;
-//    standardPoses.poses.push_back(pose1);
+    //    geometry_msgs::Pose pose1;
+    //    pose1.position.x = -0.34;
+    //    pose1.position.y = 0;
+    //    pose1.position.z = 0;
+    //    pose1.orientation = quat;
+    //    standardPoses.poses.push_back(pose1);
 
-//    geometry_msgs::Pose pose2;
-//    pose2.position.x = 1.0;
-//    pose2.position.y = -0.4;
-//    pose2.position.z = 0;
-//    pose2.orientation = quat;
-//    standardPoses.poses.push_back(pose2);
+    //    geometry_msgs::Pose pose2;
+    //    pose2.position.x = 1.0;
+    //    pose2.position.y = -0.4;
+    //    pose2.position.z = 0;
+    //    pose2.orientation = quat;
+    //    standardPoses.poses.push_back(pose2);
 
-//    geometry_msgs::Pose pose3;
-//    pose3.position.x = 0.76;
-//    pose3.position.y = 1.47;
-//    pose3.position.z = 0;
-//    pose3.orientation = quat;
-//    standardPoses.poses.push_back(pose3);
+    //    geometry_msgs::Pose pose3;
+    //    pose3.position.x = 0.76;
+    //    pose3.position.y = 1.47;
+    //    pose3.position.z = 0;
+    //    pose3.orientation = quat;
+    //    standardPoses.poses.push_back(pose3);
 
     geometry_msgs::Pose pose4;
     pose4.position.x = -1.45;
@@ -90,7 +165,7 @@ decision_making::TaskResult initialize(std::string, const decision_making::FSMCa
         initialpose.pose.covariance[i] = 0.0;
     }
 
-    pub.publish(initialpose);
+    init_pub.publish(initialpose);
 
     five_seconds.sleep();
 
@@ -100,20 +175,38 @@ decision_making::TaskResult initialize(std::string, const decision_making::FSMCa
 
 decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    e.riseEvent("/NOTHING_FOUND");
-    //    nav_goal.pose.position.x = -0.34;
-    //    nav_goal.pose.position.y = 0;
-    //    nav_goal.pose.position.z = 0;
-    //    double roll = 0;
-    //    double pitch = 0;
-    //    double yaw = 0;
+    geometry_msgs::PoseStamped target_robot;
+    static tf::TransformListener tf_listener;
 
-    //    geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(roll, pitch, yaw);
 
-    //    nav_goal.pose.orientation = quat;
+    // TARGET POSITION VON NILS
 
-    //    five_seconds.sleep();
-    //    e.riseEvent("/TARGET_FOUND");
+    target.pose.position.x = -0.617883205414;
+    target.pose.position.y = 0.599252581596;
+    target.pose.position.z = 0;
+    target.header.frame_id = "/base_link";
+
+    double alpha = atan(target.pose.position.y / target.pose.position.x);
+    double h = sqrt(target.pose.position.x * target.pose.position.x + target.pose.position.y * target.pose.position.y);
+    double x = target.pose.position.x - cos(alpha) * (-0.6);
+    double y = target.pose.position.y - sin(alpha) * (-0.6);
+
+    target_robot.pose.position.x = x;
+    target_robot.pose.position.y = y;
+    target_robot.pose.position.z = 0;
+
+    geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha);
+
+    target_robot.pose.orientation = quat;
+    target_robot.header.frame_id = "base_link";
+
+
+    ros::Time now = ros::Time::now();
+    tf_listener.waitForTransform("/map", "/base_link", now, ros::Duration(3.0));
+    tf_listener.transformPose("/map", target_robot, nav_goal);
+
+    five_seconds.sleep();
+    e.riseEvent("/TARGET_FOUND");
     return decision_making::TaskResult::SUCCESS();
 
 }
@@ -192,7 +285,26 @@ decision_making::TaskResult pickUp(std::string, const decision_making::FSMCallCo
 }
 
 decision_making::TaskResult detection(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    five_seconds.sleep();
+
+    e.riseEvent("/SAFE");
+
     return decision_making::TaskResult::SUCCESS();
+}
+
+decision_making::TaskResult moveItSearchFront(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    if(moveToNamedTarget("search_front")){
+        e.riseEvent("/SEARCH_FRONT");
+        return decision_making::TaskResult::SUCCESS();
+    }
+    else {
+        return decision_making::TaskResult::FAIL();
+    }
+
+
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveAround(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -216,6 +328,56 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
     }
 
     return decision_making::TaskResult::SUCCESS();
+}
+
+decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+    if(moveToNamedTarget("safety_front")){
+        one_second.sleep();
+        if(moveToNamedTarget("pick_front")){
+            one_second.sleep();
+            if(moveToNamedTarget("pick_front")){
+                one_second.sleep();
+                driveForward();
+                one_second.sleep();
+                closeGripper();
+                e.riseEvent("/PICK_POSITION");
+                return decision_making::TaskResult::SUCCESS();
+            }
+        }
+    }
+    else {
+        return decision_making::TaskResult::FAIL();
+    }
+
+
+    return decision_making::TaskResult::FAIL();
+}
+
+decision_making::TaskResult moveItPlace(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    if(moveToNamedTarget("safety_front")){
+        if(moveToNamedTarget("safety_back")){
+            if(moveToNamedTarget("place_choose_1")){
+                one_second.sleep();
+                if(moveToNamedTarget("place_choose_1")){
+                    one_second.sleep();
+                    if(moveToNamedTarget("place_final_1")){
+                        one_second.sleep();
+                        openGripper();
+                        if(moveToNamedTarget("place_choose_1")){
+                            if(moveToNamedTarget("safety_back")){
+                                e.riseEvent("/PLACED");
+                                return decision_making::TaskResult::SUCCESS();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult analyzeLoad(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -255,14 +417,20 @@ int main(int argc, char **argv) {
     srand(seed);
     node = new ros::NodeHandle();
 
-    pub = node->advertise<geometry_msgs::PoseWithCovarianceStamped> ("/initialpose", 1);
+    init_pub = node->advertise<geometry_msgs::PoseWithCovarianceStamped> ("/initialpose", 1);
 
-    boost::shared_ptr<MoveBaseClient> temp(new MoveBaseClient("move_base", true));
+    ac = boost::shared_ptr<MoveBaseClient>(new MoveBaseClient("move_base", true));
     //wait for the action server to come up
-    while(!temp->waitForServer(ros::Duration(5.0))){
+    while(!ac->waitForServer(ros::Duration(5.0))){
         ROS_INFO("Waiting for the move_base action server to come up");
     }
-    ac = temp;
+    //    ac = temp;
+
+    moveit::planning_interface::MoveGroup::Options options("arm_1", "robot_description");
+    my_moveit = boost::shared_ptr<moveit::planning_interface::MoveGroup>(new moveit::planning_interface::MoveGroup(options));
+
+    brics_pub = node->advertise<brics_actuator::JointPositions> ("/arm_1/gripper_controller/position_command", 1);
+    cmd_pub = node->advertise<geometry_msgs::Twist> ("/cmd_vel", 1);
 
     RosEventQueue* q = new RosEventQueue();
 
@@ -272,6 +440,9 @@ int main(int argc, char **argv) {
     LocalTasks::registrate("TurnToTarget", turnToTarget);
     LocalTasks::registrate("PickUp", pickUp);
     LocalTasks::registrate("Detection", detection);
+    LocalTasks::registrate("MoveItSearchFront", moveItSearchFront);
+    LocalTasks::registrate("MoveItPick", moveItPick);
+    LocalTasks::registrate("MoveItPlace", moveItPlace);
     LocalTasks::registrate("DriveAround", driveAround);
     LocalTasks::registrate("AnalyzeLoad", analyzeLoad);
     LocalTasks::registrate("DriveToTruck", driveToTruck);

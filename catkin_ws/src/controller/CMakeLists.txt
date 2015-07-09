@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   costmap_2d
   clear_costmap_recovery
+  moveit_ros_planning_interface
+  moveit_msgs
 )
 
 ## System dependencies are found with CMake's conventions

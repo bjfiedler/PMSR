@@ -6,7 +6,7 @@ FSM_STATES
     AnalyzeScan,
     Drive,
     TurnToTarget,
-    PickUp,
+    Place,
     Initialize,
     DriveAround,
     Stop,
@@ -15,9 +15,12 @@ FSM_STATES
     DriveToTruck,
     DriveToContainer,
     PlaceToTruck,
-    PlaceToContainer
+    PlaceToContainer,
+    MoveItSearchFront,
+    MoveItPick,
+    MoveItPlace
 }
-FSM_START(Initialize);
+FSM_START(AnalyzeScan);
 FSM_BGN
 {
     FSM_STATE(Initialize)
@@ -59,7 +62,31 @@ FSM_BGN
         FSM_CALL_TASK(TurnToTarget)
         FSM_TRANSITIONS
         {
-            FSM_ON_EVENT("/TURNED", FSM_NEXT(Detection))
+            FSM_ON_EVENT("/TURNED", FSM_NEXT(MoveItSearchFront))
+        }
+    }
+    FSM_STATE(MoveItSearchFront)
+    {
+        FSM_CALL_TASK(MoveItSearchFront)
+        FSM_TRANSITIONS
+        {
+            FSM_ON_EVENT("/SEARCH_FRONT", FSM_NEXT(Detection))
+        }
+    }
+    FSM_STATE(MoveItPick)
+    {
+        FSM_CALL_TASK(MoveItPick)
+        FSM_TRANSITIONS
+        {
+            FSM_ON_EVENT("/PICK_POSITION", FSM_NEXT(MoveItPlace))
+        }
+    }
+    FSM_STATE(MoveItPlace)
+    {
+        FSM_CALL_TASK(MoveItPlace)
+        FSM_TRANSITIONS
+        {
+            FSM_ON_EVENT("/PLACED", FSM_NEXT(Stop))
         }
     }
     FSM_STATE(Detection)
@@ -68,16 +95,7 @@ FSM_BGN
         FSM_TRANSITIONS
         {
             FSM_ON_EVENT("/DANGER", FSM_NEXT(AnalyzeScan))
-            FSM_ON_EVENT("/SAFE", FSM_NEXT(PickUp))
-        }
-    }
-    FSM_STATE(PickUp)
-    {
-        FSM_CALL_TASK(PickUp)
-        FSM_TRANSITIONS
-        {
-            FSM_ON_EVENT("/FREE_SPACE", FSM_NEXT(AnalyzeScan))
-            FSM_ON_EVENT("/FULL", FSM_NEXT(AnalyzeLoad))
+            FSM_ON_EVENT("/SAFE", FSM_NEXT(MoveItPick))
         }
     }
     FSM_STATE(AnalyzeLoad)
