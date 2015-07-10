@@ -1,6 +1,7 @@
 <launch>
- <!--- Run State Publisher -->
+ <!--- Run State Publisher 
   <include file="$(find vrep_youbot_plugin)/launch/vrep_youbot.launch" />
+ -->
 		
  <node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" output="screen">
   <rosparam>
@@ -32,6 +33,6 @@
    lasamplestep: 0.005
    base_frame: /base_footprint
   </rosparam>
-  <remap from="/scan" to="/scan_back" />
+  <remap from="/scan" to="/scan_filtered" />
  </node>
 </launch>
