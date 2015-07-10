@@ -1,0 +1,4 @@
+<launch>
+<node pkg="youbot_traj_controller" type="youbot_trajectory_controller" name="youbot_trajectory_controller" output="screen"/>
+<remap from="/arm_controller/follow_joint_trajectory/goal" to="/arm_1/arm_controller/follow_joint_trajectory/goal"/>
+</launch>

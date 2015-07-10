@@ -1,0 +1,24 @@
+<package>
+  <name>youbot_traj_controller</name>
+  <version>0.1.0</version>
+  <description>
+    Trajectory controller for KUKA's youBot to interact with the new moveIt Framework
+  </description>
+  <author>Arne Hitzmann</author>
+  <maintainer email="arne.hitzmann@ostfalia.de">Arne Hitzmann</maintainer>
+  <license>LGPL, BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rosconsole</build_depend>
+  <build_depend>roslib</build_depend>
+  <build_depend>trajectory_msgs</build_depend>
+  <build_depend>brics_actuator</build_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>trajectory_msgs</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>rosconsole</run_depend>
+  <run_depend>roslib</run_depend>
+  <run_depend>brics_actuator</run_depend>
+</package>
+
+
