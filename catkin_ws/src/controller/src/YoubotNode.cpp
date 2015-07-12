@@ -186,8 +186,32 @@ void poiCallback (const geometry_msgs::PoseArrayConstPtr& input){
 }
 
 taged_pose choose_next_target(){
-    // TODO (über Distanz?)
-    return points_of_interest[0];
+
+   /* Die Funktion wählt das Objekt, das noch nicht angefahren
+    * wurde und die kleinste Distanz zu (0, 0 ,0 ) hat.
+    */
+
+    float distance = 100000000;
+    float tem_distance = 0;
+    float x ;
+    float y;
+    int index;
+
+    for(int i = 0; i < points_of_interest.size(); i++){
+
+         x = points_of_interest[i].pose.position.x;
+         y = points_of_interest[i].pose.position.y;
+
+        if(points_of_interest[i].tag){
+            tem_distance = sqrt(pow(x, 2) + pow(y,2));
+
+            if(tem_distance < distance){
+                distance = tem_distance;
+                index = i;
+            }
+        }
+    }
+    return points_of_interest[index];
 }
 
 decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
