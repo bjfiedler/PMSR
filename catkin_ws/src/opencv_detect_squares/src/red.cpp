@@ -1,7 +1,7 @@
 #include "red_tools.h"
 const std::string OPENCV_WINDOW = "Image window";
 
-const std::string tf_world_frame = "base_link";
+const std::string tf_world_frame = "base_footprint_turned";
 std::string tf_camera_frame = "kinect_visionSensor";
 
 const std::string posePublishTopic = "/ghsSignPose";
@@ -183,7 +183,7 @@ public:
 			
 			
 			
-		publishSquares(cv_ptr->image, barrels);
+		publishSquares(cv_ptr->image, objects);
 		
 #if debug_mode
 		// Update GUI Window
@@ -215,25 +215,25 @@ public:
 			cameraIntrinsic_inv = cameraIntrinsic.inv();
 	
 	}
-	void publishSquares(Mat& image, vector<barrel> barrels){
+	void publishSquares(Mat& image, opencv_detect_squares::DetectedObjectArray barrels){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
 // 		circ = 0;
-		if (barrels.empty())
+		if (barrels.objects.empty())
 			return;
 		
 		geometry_msgs::PoseArray posearray;
 		posearray.header.stamp = ros::Time::now();
 		posearray.header.frame_id=tf_world_frame;
-		posearray.poses.resize(barrels.size());
+		posearray.poses.resize(barrels.objects.size());
 		
-		for (int i = 0; i < barrels.size(); i++)
+		for (int i = 0; i < barrels.objects.size(); i++)
 		{
 #if debug_mode
 			//draw a circle 
 			circle(image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
 #endif			
-			posearray.poses[i] = barrels[i].pose;
+			posearray.poses[i] = barrels.objects[i].pose;
 
 		}
 		//red arrows

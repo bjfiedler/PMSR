@@ -57,11 +57,11 @@ add_message_files(
 )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
+add_service_files(
+   FILES
+   GetObjects.srv
 #   Service2.srv
-# )
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -115,6 +115,7 @@ include_directories(
 add_executable(squares src/squares.cpp src/circle.cpp)
 add_executable(red src/red.cpp src/red_tools.cpp)
 add_executable(water src/water.cpp)
+add_executable(water_all src/water_all.cpp)
 add_executable(dummyPublisher src/dummyPublisher.cpp)
 add_executable(hsvSeparator src/hsvSeparator.cpp)
 
@@ -132,6 +133,10 @@ target_link_libraries(red
 					  ${OpenCV_LIBRARIES}
 					  )
 target_link_libraries(water
+					  ${catkin_LIBRARIES}
+					  ${OpenCV_LIBRARIES}
+					  )
+target_link_libraries(water_all
 					  ${catkin_LIBRARIES}
 					  ${OpenCV_LIBRARIES}
 					  )
