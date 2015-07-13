@@ -1,7 +1,7 @@
 #include "red_tools.h"
 const std::string OPENCV_WINDOW = "Image window";
 
-const std::string tf_world_frame = "base_footprint_turned";
+const std::string tf_world_frame = "base_link";
 std::string tf_camera_frame = "kinect_visionSensor";
 
 const std::string posePublishTopic = "/ghsSignPose";
@@ -32,6 +32,8 @@ float ref_width_2; // 2/3 der referenzbildbreite
 
 sensor_msgs::CameraInfo recentCamInfo;
 cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
+
+opencv_detect_squares::DetectedObjectArray* global_detectedObjects;
 
 
 
@@ -73,6 +75,7 @@ class ImageConverter
 	image_transport::Subscriber depth_image_sub_;
 	ros::Subscriber cameraInfo_subscriber_;
 	tf::TransformListener listener;
+	ros::ServiceServer objectServer;
 	
 	
 public:
@@ -84,6 +87,7 @@ public:
 
 
 		cameraInfo_subscriber_ = nh_.subscribe(cameraInfoTopic, 1, &ImageConverter::cameraInfoCb, this);
+		objectServer = nh_.advertiseService("getCVObjects", &ImageConverter::serviceCB, this);
 		
 		//squares window
 		cv::namedWindow(OPENCV_WINDOW);
@@ -114,8 +118,20 @@ public:
 		cv:destroyWindow("Control");
 	}
 	
+	bool serviceCB(opencv_detect_squares::GetObjects::Request &req, opencv_detect_squares::GetObjects::Response &res)
+	{
+		cout<<"Sercice called\n";
+			if (global_detectedObjects != 0)
+			{
+				res.result = *global_detectedObjects;
+				return true;
+			}
+			return false;
+	}
+	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
 	{
+		cout<<"cam CB\n";
 		static ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
 		cv_bridge::CvImagePtr cv_ptr;
 		try
@@ -152,6 +168,7 @@ public:
 		}
 		
 #if debug_mode
+		cv::imshow("orig", cv_ptr->image);
 		for (int i = 0; i < barrels.size(); i++)
 		{
 			circle(cv_ptr->image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
@@ -161,31 +178,36 @@ public:
 		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
 // 		img_thresh = thresholdImage(img_hsv, 3);
 // 		imshow("bar", img_thresh);
+		cout<<"fffffffffffffffffff\n";
 #endif
 // 		checkGHS(img_thresh, &barrels, cv_ptr->image);
-		
+		cout<<"lala"<<barrels.size()<<'\n';
 		if (barrels.size() == 0)
 			return;
 		//build the message
-		opencv_detect_squares::DetectedObjectArray objects;
-		objects.objects.resize(barrels.size());
-		objects.header.stamp = ros::Time::now();
-		objects.header.frame_id = tf_world_frame;
+		opencv_detect_squares::DetectedObjectArray* objects = new opencv_detect_squares::DetectedObjectArray();
+		objects->objects.resize(barrels.size());
+		objects->header.stamp = ros::Time::now();
+		objects->header.frame_id = tf_world_frame;
 		for (int i = 0; i < barrels.size(); i++)
 		{
-			objects.objects[i].ghs = barrels[i].ghs;
+			objects->objects[i].ghs = barrels[i].ghs;
 // 			cout<<"   --  "<<barrels[i].ghs<<'\n';
-			objects.objects[i].type = "barrel";
-			objects.objects[i].pose = translatePixelToRealworld(barrels[i].center);
-			objects.objects[i].color = barrels[i].color;
+			objects->objects[i].type = "barrel";
+			objects->objects[i].pose = translatePixelToRealworld(barrels[i].center);
+			objects->objects[i].color = barrels[i].color;
 		}
-		objectPublisher.publish(objects);
+		delete global_detectedObjects;
+		cout <<"foo\n";
+		global_detectedObjects = objects;
 			
 			
 			
-		publishSquares(cv_ptr->image, objects);
+		objectPublisher.publish(*objects);
+		publishSquares(cv_ptr->image, *objects);
 		
 #if debug_mode
+		
 		// Update GUI Window
 		cv::imshow(OPENCV_WINDOW, cv_ptr->image);
 		cv::waitKey(3);
@@ -230,8 +252,9 @@ public:
 		for (int i = 0; i < barrels.objects.size(); i++)
 		{
 #if debug_mode
+			cout<<"fffffffffffffffffff\n";
 			//draw a circle 
-			circle(image,barrels[i].center, (int) barrels[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
+// 			circle(image,barrels.objects[i].center, (int) barrels.objects[i].radius, Scalar(0,255,0), 1, CV_AA, 0);
 #endif			
 			posearray.poses[i] = barrels.objects[i].pose;
 
@@ -269,7 +292,7 @@ private:
 		}
 		catch (exception &e)
 		{
-			
+			ROS_ERROR("cv_bridge exception: %s", e.what());
 		}
 		
 		
@@ -283,6 +306,7 @@ private:
 		}
 		catch (exception &e)
 		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
 		}
 		
 		

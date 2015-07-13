@@ -148,7 +148,7 @@ target_link_libraries(hsvSeparator
 					  ${catkin_LIBRARIES}
 					  ${OpenCV_LIBRARIES}
 					  )
-
+add_dependencies(red opencv_detect_squares_gencpp)
 #############
 ## Install ##
 #############
