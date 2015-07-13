@@ -36,6 +36,14 @@ struct taged_pose{
     bool tag;
 };
 
+struct barrel{
+    string color;
+
+    int danger_sign_id ; // = -1 wenn das Fass kein Gefahrenzeichen hat
+};
+
+
+
 ros::NodeHandle* node;
 
 //Sleeptimes
@@ -52,6 +60,8 @@ geometry_msgs::PoseStamped nav_goal;
 geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
 vector<taged_pose> points_of_interest;
+// Vector hat immer die Länge drei. Index sagt aus auf welcher Position der Ladefläche sich das Objekt befindet.
+vactor<barrel> youbot_load_area(3);
 taged_pose current_target;
 
 boost::shared_ptr<MoveBaseClient> my_movebase;
@@ -185,11 +195,15 @@ void poiCallback (const geometry_msgs::PoseArrayConstPtr& input){
     }
 }
 
-taged_pose choose_next_target(){
+int choose_next_target(){
 
    /* Die Funktion wählt das Objekt, das noch nicht angefahren
     * wurde und die kleinste Distanz zu (0, 0 ,0 ) hat.
     */
+
+    geometry_msgs::PoseStamped object_pose;
+
+     object_pose.header.frame_id = "/map";
 
     float distance = 100000000;
     float tem_distance = 0;
@@ -199,8 +213,10 @@ taged_pose choose_next_target(){
 
     for(int i = 0; i < points_of_interest.size(); i++){
 
-         x = points_of_interest[i].pose.position.x;
-         y = points_of_interest[i].pose.position.y;
+         tf_listener.transformPose("/base_link", points_of_interest[i].pose, object_pose);
+
+         x = object_pose.position.x;
+         y = object_pose.position.y;
 
         if(points_of_interest[i].tag){
             tem_distance = sqrt(pow(x, 2) + pow(y,2));
@@ -211,7 +227,7 @@ taged_pose choose_next_target(){
             }
         }
     }
-    return points_of_interest[index];
+    return index;
 }
 
 decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
