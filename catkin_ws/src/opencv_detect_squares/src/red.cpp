@@ -1,7 +1,7 @@
 #include "red_tools.h"
 const std::string OPENCV_WINDOW = "Image window";
 
-const std::string tf_world_frame = "base_link";
+const std::string tf_world_frame = "base_footprint_turned";
 std::string tf_camera_frame = "kinect_visionSensor";
 
 const std::string posePublishTopic = "/ghsSignPose";
@@ -131,7 +131,7 @@ public:
 	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
 	{
-		cout<<"cam CB\n";
+// 		cout<<"cam CB\n";
 		static ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
 		cv_bridge::CvImagePtr cv_ptr;
 		try
@@ -178,10 +178,10 @@ public:
 		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
 // 		img_thresh = thresholdImage(img_hsv, 3);
 // 		imshow("bar", img_thresh);
-		cout<<"fffffffffffffffffff\n";
+// 		cout<<"fffffffffffffffffff\n";
 #endif
 // 		checkGHS(img_thresh, &barrels, cv_ptr->image);
-		cout<<"lala"<<barrels.size()<<'\n';
+// 		cout<<"lala"<<barrels.size()<<'\n';
 		if (barrels.size() == 0)
 			return;
 		//build the message
@@ -277,14 +277,14 @@ private:
 		cv::Point3f direction(image_point(0), image_point(1), image_point(2));
 		geometry_msgs::PoseStamped tf_direction, tf_direction_world;
 		
-		tf_direction.pose.position.x = - direction.x;
-		tf_direction.pose.position.y = - direction.y;
-		tf_direction.pose.position.z = direction.z;
+		tf_direction.pose.position.x = direction.z;
+		tf_direction.pose.position.y = -direction.y;
+		tf_direction.pose.position.z = direction.x;
 		//rotation around y axys to point in viewing direction of the camera
-		tf_direction.pose.orientation.y = -0.70711;
-		tf_direction.pose.orientation.w = 0.70711;
+// 		tf_direction.pose.orientation.y = -0.70711;
+// 		tf_direction.pose.orientation.w = 0.70711;
 		//no rotation
-// 		tf_direction.pose.orientation.w = 1;
+		tf_direction.pose.orientation.w = 1;
 		tf_direction.header.frame_id = tf_camera_frame;
 		tf_direction.header.stamp = ros::Time(0);
 		try{
@@ -318,10 +318,10 @@ private:
 		
 		
 		
-		double ratio = (0.1-camZeroWorld.point.z) / directionWorld.z;
+		double ratio = (0.075-camZeroWorld.point.z) / directionWorld.z;
 		
 		
-		geometry_msgs::Pose positionOnFloor;
+		geometry_msgs::Pose positionOnFloor; 
 		positionOnFloor.position.x = camZeroWorld.point.x + directionWorld.x * ratio;
 		positionOnFloor.position.y = camZeroWorld.point.y + directionWorld.y * ratio;
 		positionOnFloor.position.z = camZeroWorld.point.z + directionWorld.z * ratio;
