@@ -9,6 +9,8 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   roscpp
   sensor_msgs
+geometry_msgs
+ message_generation
 )
 
 ## System dependencies are found with CMake's conventions
@@ -52,11 +54,11 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+ add_service_files(
+  FILES
+
+ get_barrels.srv
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -66,10 +68,12 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   sensor_msgs
-# )
+ generate_messages(
+   DEPENDENCIES
+  sensor_msgs
+geometry_msgs
+
+ )
 
 ###################################
 ## catkin specific configuration ##
@@ -83,8 +87,9 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES cluster_pointcloud
-#  CATKIN_DEPENDS pcl_conversions pcl_ros roscpp sensor_msgs
-#  DEPENDS system_lib
+ CATKIN_DEPENDS pcl_conversions pcl_ros roscpp sensor_msgs geometry_msgs sensor_msgs
+ #DEPENDS system_lib geometry_msgs sensor_msgs
+ 
 )
 
 ###########
@@ -168,4 +173,6 @@ target_link_libraries(cluster_pointcloud ${catkin_LIBRARIES})
 
 add_executable(find_truck src/find_truck.cpp)
 target_link_libraries(find_truck ${catkin_LIBRARIES})
+
+add_dependencies(cluster_pointcloud cluster_pointcloud_gencpp)
 
