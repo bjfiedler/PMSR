@@ -346,14 +346,14 @@ private:
 		cv::Point3f direction(image_point(0), image_point(1), image_point(2));
 		geometry_msgs::PoseStamped tf_direction, tf_direction_world;
 		
-		tf_direction.pose.position.x = - direction.x;
+		tf_direction.pose.position.x = direction.z;
 		tf_direction.pose.position.y = - direction.y;
-		tf_direction.pose.position.z = direction.z;
+		tf_direction.pose.position.z = direction.x;
 		//rotation around y axys to point in viewing direction of the camera
-		tf_direction.pose.orientation.y = -0.70711;
-		tf_direction.pose.orientation.w = 0.70711;
+// 		tf_direction.pose.orientation.y = -0.70711;
+// 		tf_direction.pose.orientation.w = 0.70711;
 		//no rotation
-		// 		tf_direction.pose.orientation.w = 1;
+				tf_direction.pose.orientation.w = 1;
 		tf_direction.header.frame_id = tf_camera_frame;
 		tf_direction.header.stamp = ros::Time(0);
 		try{
