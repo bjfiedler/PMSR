@@ -25,9 +25,10 @@
 #include <math.h>
 #include <string.h>
 #include "opencv_detect_squares/DetectedObjectArray.h"
+#include "opencv_detect_squares/GetObjects.h"
 
-#define debug_mode 0
-#define debug_mode_verbose 0
+#define debug_mode 1
+#define debug_mode_verbose 1
 
 using namespace cv;
 using namespace std;
