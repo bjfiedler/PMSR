@@ -166,7 +166,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
     } else{
         std::cout << "Found objects: " << pose_vector.size() << "\n";
 
-        geometry_msgs::PoseArray pose_list;
+
 
 
       for(int i = 0; i < pose_vector.size(); i++){
@@ -207,7 +207,7 @@ main (int argc, char** argv)
 
   // pub_pose = nh.advertise<geometry_msgs::PoseArray>("/points_of_interest", 1);
 
-   ros::ServiceServer service = n.advertiseService("get_barrel_list", get_barrel_list);
+   ros::ServiceServer service = nh.advertiseService("get_barrel_list", get_barrel_list);
 
 
 
