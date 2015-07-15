@@ -20,24 +20,56 @@
 #include <pcl/segmentation/extract_clusters.h>
 
 #include "cluster_pointcloud/get_barrels.h"
+#include "tf/transform_listener.h"
 
 #include <math.h>
 
 #include <iostream>
 #include <stdlib.h>
 
+// ///////////////////////////////////////////////////
+
+        // Einstellung der Messzeit
+        int meas_time = 2;
+
+        // Einstellung der Messfrequenz
+        int meas_frequency = 5;
+
+// ///////////////////////////////////////////////////
+
 
 ros::Publisher pub;
 
 ros::Publisher pub_pose;
 
-geometry_msgs::PoseArray pose_list;
+bool run_cloud_cd = false;
+
+int cloud_cb_counter = 0;
+
+
+
+int meas_counter = meas_time * meas_frequency;
+
+struct myPose{
+    geometry_msgs::Pose pose;
+
+    int counter;
+};
+
+std::vector<myPose> my_pose_list;
+
 
 
 
 void
 cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 {
+
+   if(run_cloud_cd){
+
+       cloud_cb_counter++;
+
+    static  tf::TransformListener listener;
 
 
     pcl::PCLPointCloud2 pcl_pc2;
@@ -81,7 +113,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
       j++;
     }
 
-        pose_list.poses.clear();
+
 
 
     float object_width;
@@ -145,50 +177,93 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
 
 
-            geometry_msgs::Pose pose;
+            geometry_msgs::PoseStamped pose;
 
-            pose.position.x = tem_publish_cloud->points[pose_id].x;
-            pose.position.y = tem_publish_cloud->points[pose_id].y;
-            pose.position.z = 0;
+            pose.pose.position.x = tem_publish_cloud->points[pose_id].x;
+            pose.pose.position.y = tem_publish_cloud->points[pose_id].y;
+            pose.pose.position.z = 0;
 
+            pose.pose.orientation.w = 1.0;
 
-           pose_vector.push_back(pose);
+            pose.header.frame_id ="/base_link";
 
+             geometry_msgs:: PoseStamped map_pose;
 
+            listener.waitForTransform("/map", "/base_link", ros::Time::now(), ros::Duration(3.0));
+            listener.transformPose("/map", pose, map_pose);
+
+            bool found = false;
+
+            for(int k = 0; k < my_pose_list.size();k++){
+
+                float my_x = my_pose_list[k].pose.position.x;
+                float my_y = my_pose_list[k].pose.position.y;
+
+                bool found = false;
+
+                float x = map_pose.pose.position.x;
+                float y = map_pose.pose.position.y;
+
+                float position_distance = sqrt(pow(my_x - x, 2) + pow(my_y - y, 2));
+
+                if(position_distance < 10){
+                    my_pose_list[k].counter++;
+                    found = true;
+
+                 }
+
+            }
+
+            if(!found){
+
+               myPose my_pose;
+               my_pose.pose = map_pose.pose;
+               my_pose.counter = 0;
+               my_pose_list.push_back(my_pose);
+            }
 
         }
 
 
     }
 
-    if(pose_vector.size() == 0){
-        ROS_INFO("No barrels found :(");
-    } else{
-        std::cout << "Found objects: " << pose_vector.size() << "\n";
 
-
-
-
-      for(int i = 0; i < pose_vector.size(); i++){
-
-          pose_list.poses.push_back( pose_vector[i]);
-
-      }
-
-         //pub_pose.publish(pose_list);
+    }
 
     }
 
 
-}
+
 
 bool get_barrel_list(cluster_pointcloud::get_barrels::Request  &req,
          cluster_pointcloud::get_barrels::Response &res)
 {
 
+    while(cloud_cb_counter < meas_counter){
+        run_cloud_cd = true;
+    }
+
+    cloud_cb_counter = 0;
+
+    run_cloud_cd = false;
+
+    geometry_msgs::PoseArray pose_list;
+
+    for(int i = 0; i < my_pose_list.size(); i++){
+
+        if(my_pose_list[i].counter > (meas_counter / 2)){
+            pose_list.poses.push_back(my_pose_list[i].pose);
+        }
+
+    }
+
+
+
     pose_list.header.frame_id = "/map";
 
   res.barrel_list = pose_list;
+
+  my_pose_list.clear();
 
   return true;
 }
