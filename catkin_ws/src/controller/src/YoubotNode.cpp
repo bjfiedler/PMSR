@@ -85,6 +85,7 @@ double distanceFromObject = 0.6;
 double objectThreshold = 0.2;
 double min_pick_distance = 0.8;
 bool unloading = false;
+bool last_target_failed = false;
 
 // #####################################################################
 
@@ -260,14 +261,14 @@ int choose_next_target(){
         if(points_of_interest[i].safe && points_of_interest[i].fail_counter < max_fail_counter){
             tem_distance = sqrt(pow(x, 2) + pow(y,2));
 
-            // TODO
-            // An object that could not get picked should not be tried immediately again
-            if(tem_distance < distance && tem_distance > min_pick_distance){
+            // If an object pick failed, try to drive further away to try later again from another position
+            if(tem_distance < distance && (tem_distance > min_pick_distance || !last_target_failed)){
                 distance = tem_distance;
                 index = i;
             }
         }
     }
+    last_target_failed = false;
     return index;
 }
 
@@ -415,6 +416,7 @@ decision_making::TaskResult drive(std::string, const decision_making::FSMCallCon
         return decision_making::TaskResult::SUCCESS();
     } else{
         points_of_interest[current_index].fail_counter++;
+        last_target_failed = true;
         e.riseEvent("/DRIVING_FAILED");
         return decision_making::TaskResult::SUCCESS();
     }
@@ -444,6 +446,7 @@ decision_making::TaskResult turnToTarget(std::string, const decision_making::FSM
     }
     else{
         points_of_interest[current_index].fail_counter++;
+        last_target_failed = true;
         e.riseEvent("/TURNING_FAILED");
         return decision_making::TaskResult::SUCCESS();
     }
@@ -480,6 +483,7 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
                 return decision_making::TaskResult::SUCCESS();
             } else {
                 points_of_interest[current_index].fail_counter++;
+                last_target_failed = true;
                 e.riseEvent("/MOVE_CORRECTION_FAILED");
                 return decision_making::TaskResult::SUCCESS();
             }
