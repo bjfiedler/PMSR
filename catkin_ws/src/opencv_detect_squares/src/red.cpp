@@ -30,7 +30,6 @@ float ref_width_2; // 2/3 der referenzbildbreite
 
 
 
-sensor_msgs::CameraInfo recentCamInfo;
 cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 vector<barrel> global_detectedObjects;
@@ -124,6 +123,8 @@ public:
 	bool serviceCB(opencv_detect_squares::GetObjects::Request &req, opencv_detect_squares::GetObjects::Response &res)
 	{
 		static ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
+		
+		global_detectedObjects.clear();
 		
 		
 		cout<<"Sercice called\n";
