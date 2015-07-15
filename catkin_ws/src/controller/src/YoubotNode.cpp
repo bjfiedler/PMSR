@@ -22,6 +22,8 @@
 #include <brics_actuator/JointPositions.h>
 #include "Youbot.h"
 #include "tf/transform_listener.h"
+#include "opencv_detect_squares/GetObjects.h"
+#include "cluster_pointcloud/get_barrels.h"
 
 using namespace std;
 
@@ -29,24 +31,24 @@ using namespace std;
 
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
 
-//Pose with tag whether it was processed
 struct taged_pose{
     geometry_msgs::PoseStamped pose;
-    //true: not yet processed false: processed, dont touch again
-    bool tag;
+    bool safe;
+    int fail_counter;
 };
 
-struct barrel{
+struct object_on_robot{
+    // 1: left, 2: middle, 3: right
+    int position_on_robot;
+    // red, yellow, green
     string color;
-
-    int danger_sign_id ; // = -1 wenn das Fass kein Gefahrenzeichen hat
+    // none, explosive, fire, toxic, unkown
+    string ghs;
 };
-
-
 
 ros::NodeHandle* node;
 
-//Sleeptimes
+// Sleeptimes
 ros::Duration five_seconds(5, 0);
 ros::Duration three_seconds(3, 0);
 ros::Duration one_second(1, 0);
@@ -55,21 +57,36 @@ ros::Duration one_second(1, 0);
 ros::Publisher init_pub;
 ros::Publisher brics_pub;
 ros::Publisher cmd_pub;
+ros::Publisher test_pub;
 
+// Services
+ros::ServiceClient detection_client;
+ros::ServiceClient laser_client;
+
+// Poses
 geometry_msgs::PoseStamped nav_goal;
 geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
+geometry_msgs::PoseStamped container_pose;
+geometry_msgs::PoseStamped truck_pose;
+
+// Vectors
 vector<taged_pose> points_of_interest;
-// Vector hat immer die Länge drei. Index sagt aus auf welcher Position der Ladefläche sich das Objekt befindet.
-vactor<barrel> youbot_load_area(3);
-taged_pose current_target;
+vector<object_on_robot> objects_on_robot;
 
 boost::shared_ptr<MoveBaseClient> my_movebase;
 boost::shared_ptr<moveit::planning_interface::MoveGroup> my_moveit;
 
-int toPick = 0;
-int next_place_on_robot = 0;
-double distanceFromObject = -0.6;
+int current_index;
+int next_place_on_robot = 1;
+int next_place_on_truck = 1;
+int max_fail_counter = 3;
+double distanceFromObject = 0.6;
+double objectThreshold = 0.2;
+double min_pick_distance = 0.8;
+bool unloading = false;
+
+// #####################################################################
 
 bool moveToNamedTarget(string target){
     my_moveit->setNamedTarget(target);
@@ -78,8 +95,8 @@ bool moveToNamedTarget(string target){
 
 bool driveForward() {
 
-    for (int i = 0; i < 3; ++i) {
-        geometry_msgs::Twist forward;
+    geometry_msgs::Twist forward;
+    for (int i = 0; i < 2; ++i) {
         forward.linear.x = 0.1;
 
         cmd_pub.publish(forward);
@@ -87,6 +104,10 @@ bool driveForward() {
         one_second.sleep();
 
     }
+
+    forward.linear.x = 0.0;
+
+    cmd_pub.publish(forward);
 
     return true;
 }
@@ -111,7 +132,6 @@ void sendGoalToMovebase(){
     goal.target_pose.pose.position = nav_goal.pose.position;
     goal.target_pose.pose.orientation = quat_turned;
 
-    ROS_INFO("Sending goal");
     my_movebase->sendGoal(goal);
 }
 
@@ -163,105 +183,86 @@ int contains(vector<taged_pose> points_of_interest, geometry_msgs::Pose current)
     for (int i = 0; i < points_of_interest.size(); ++i) {
         taged_pose poi = points_of_interest[i];
         double distance = sqrt(pow(poi.pose.pose.position.x - current.position.x, 2) + pow(poi.pose.pose.position.y - current.position.y, 2));
-        if(distance < 0.1){
+        if(distance < objectThreshold){
             return i;
         }
     }
     return -1;
 }
 
-//TODO
 bool out_of_map(geometry_msgs::Pose pose){
 
     float x = pose.position.x;
     float y = pose.position.y;
 
-     float m1 = (2.41 - 1.77) / (-0.56 + 4.19);
-     float m2 = (-1.78 - 2.41) / (0.19 + 0.56);
-     float m3 = (-2.3 + 1.78) / (-3.47 - 0.19);
-     float m4 = (1.77 + 2.3) / (-4.19 + 3.47);
+    float m1 = (2.41 - 1.77) / (-0.56 + 4.19);
+    float m2 = (-1.78 - 2.41) / (0.19 + 0.56);
+    float m3 = (-2.3 + 1.78) / (-3.47 - 0.19);
+    float m4 = (1.77 + 2.3) / (-4.19 + 3.47);
 
-     float b1 =  2.41 - (m1 * -0.56);
-     float b2 = 2.41 - (m2 * -0.56);
-     float b3 = -2.3 - (m3 * -3.47);
-     float b4 = -2.3 - (m4 * -3.47);
+    float b1 =  2.41 - (m1 * -0.56);
+    float b2 = 2.41 - (m2 * -0.56);
+    float b3 = -2.3 - (m3 * -3.47);
+    float b4 = -2.3 - (m4 * -3.47);
 
-     bool in_polygon = (y <= (m1 * x + b1) && y >= (m3 * x + b3) && x <= ((y - b2) / m2) && x >= ((y - b4) / m4);
+    bool in_polygon = (y <= (m1 * x + b1) && y >= (m3 * x + b3) && x <= ((y - b2) / m2) && x >= ((y - b4) / m4));
 
-     m1 = (0.21 - 0.42) / (-1.74 + 0.06);
-     m2 = (0.9 - 0.21) / (-1.74 + 1.74);
-     m3 = (1.15 + 1.74 ) / (-0.17 + 1.74);
-     m4 = (0.42 - 1.15 )/ (-0.06 + 0.17);
+    m1 = (0.21 - 0.42) / (-1.74 + 0.06);
+    m2 = (0.9 - 0.21) / (-1.74 + 1.74);
+    m3 = (1.15 + 1.74 ) / (-0.17 + 1.74);
+    m4 = (0.42 - 1.15 )/ (-0.06 + 0.17);
 
-     b1 = 0.21 - (m1 * -1.74);
-     b2 = 0.21 - (m2 * -1.74);
-     b3 = 1.15 - (m3 * -0.17) ;
-     b4 = 1.15 - (m4 * -0.17);
+    b1 = 0.21 - (m1 * -1.74);
+    b2 = 0.21 - (m2 * -1.74);
+    b3 = 1.15 - (m3 * -0.17) ;
+    b4 = 1.15 - (m4 * -0.17);
 
-     bool out_wall = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
+    bool out_wall = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
 
-     m1 = (-2.23 + 2.09) / (-2.15 + 1.35);
-     m2 = (-1.83 + 2.23) / (-2.1 + 2.15);
-     m3 = (-1.83 + 1.74 ) / (-2.1 + 1.39);
-     m4 = (-2.09 + 1.74) / (-1.35 + 1.39);
+    m1 = (-2.23 + 2.09) / (-2.15 + 1.35);
+    m2 = (-1.83 + 2.23) / (-2.1 + 2.15);
+    m3 = (-1.83 + 1.74 ) / (-2.1 + 1.39);
+    m4 = (-2.09 + 1.74) / (-1.35 + 1.39);
 
-     b1 = -2.23 - (m1 * -2.15);
-     b2 = -2.23 - (m2 * -2.15);
-     b3 = -1.75 - (m3 * -1.39) ;
-     b4 = -1.75 - (m4 * -1.39);
+    b1 = -2.23 - (m1 * -2.15);
+    b2 = -2.23 - (m2 * -2.15);
+    b3 = -1.75 - (m3 * -1.39) ;
+    b4 = -1.75 - (m4 * -1.39);
 
-      bool out_container = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
+    bool out_container = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
 
-             return in_polygon && out_wall && out_container;
-}
-
-void poiCallback (const geometry_msgs::PoseArrayConstPtr& input){
-    string frame = input->header.frame_id;
-    foreach (geometry_msgs::Pose current, input->poses) {
-        if(!out_of_map(current)){
-            int index = contains(points_of_interest, current);
-            taged_pose new_pose;
-            geometry_msgs::PoseStamped pose;
-            pose.header.frame_id = frame;
-            pose.pose.position = current.position;
-            new_pose.pose = pose;
-            new_pose.tag = true;
-            if(index != -1){
-                points_of_interest[index] = new_pose;
-            } else {
-                points_of_interest.push_back(new_pose);
-            }
-        }
-    }
+    return in_polygon && out_wall && out_container;
 }
 
 int choose_next_target(){
-
-   /* Die Funktion wählt das Objekt, das noch nicht angefahren
-    * wurde und die kleinste Distanz zu (0, 0 ,0 ) hat.
-    */
+    static tf::TransformListener tf_listener;
+    ros::Time now = ros::Time::now();
 
     geometry_msgs::PoseStamped object_pose;
 
-     object_pose.header.frame_id = "/map";
+    object_pose.header.frame_id = "/base_footprint";
+    object_pose.pose.orientation.w = 1.0;
 
     float distance = 100000000;
     float tem_distance = 0;
     float x ;
     float y;
-    int index;
+    int index = -1;
 
     for(int i = 0; i < points_of_interest.size(); i++){
 
-         tf_listener.transformPose("/base_link", points_of_interest[i].pose, object_pose);
+        tf_listener.waitForTransform("/base_footprint", "/map", now, ros::Duration(3.0));
+        tf_listener.transformPose("/base_footprint", points_of_interest[i].pose, object_pose);
 
-         x = object_pose.position.x;
-         y = object_pose.position.y;
+        x = object_pose.pose.position.x;
+        y = object_pose.pose.position.y;
 
-        if(points_of_interest[i].tag){
+        if(points_of_interest[i].safe && points_of_interest[i].fail_counter < max_fail_counter){
             tem_distance = sqrt(pow(x, 2) + pow(y,2));
 
-            if(tem_distance < distance){
+            // TODO
+            // An object that could not get picked should not be tried immediately again
+            if(tem_distance < distance && tem_distance > min_pick_distance){
                 distance = tem_distance;
                 index = i;
             }
@@ -270,54 +271,133 @@ int choose_next_target(){
     return index;
 }
 
-decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+geometry_msgs::PoseStamped calculateDesiredPosition(double x_pre, double y_pre, bool turned){
 
-    init_pub.publish(initialpose);
-
-    five_seconds.sleep();
-
-    e.riseEvent("/DONE");
-    return decision_making::TaskResult::SUCCESS();
-}
-
-decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-
-    current_target = choose_next_target();
-    geometry_msgs::PoseStamped target_map;
-    geometry_msgs::PoseStamped target_base_link;
+    geometry_msgs::PoseStamped result;
     geometry_msgs::PoseStamped target_robot_base_link;
 
     static tf::TransformListener tf_listener;
     ros::Time now = ros::Time::now();
 
-    // Transform next map position into base_link
+    double h = sqrt(pow(x_pre,2) + pow(y_pre,2)) - distanceFromObject;
+    double alpha;
+    if(x_pre > 0 && y_pre > 0){
+        alpha = atan(y_pre / x_pre);
+    } else if(x_pre > 0 && y_pre < 0){
+        alpha = atan(y_pre / x_pre) + 2*M_PI;
+    } else if(x_pre < 0) {
+        alpha = atan(y_pre / x_pre) + M_PI;
+    } else if(x_pre == 0 && y_pre > 0){
+        alpha = M_PI / 2;
+    } else if(x_pre == 0 && y_pre < 0){
+        3*M_PI / 2;
+    }
+    double y = h * sin(alpha);
+    double x = h * cos(alpha);
+
+    target_robot_base_link.pose.position.x = x;
+    target_robot_base_link.pose.position.y = y;
+
+    if(turned){
+        alpha += M_PI;
+    }
+
+    geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha);
+
+    target_robot_base_link.pose.orientation = quat;
+    target_robot_base_link.header.frame_id = "/base_footprint_turned";
+
+    tf_listener.waitForTransform("/map", "/base_footprint_turned", now, ros::Duration(3.0));
+    tf_listener.transformPose("/map", target_robot_base_link, result);
+
+    return result;
+}
+
+void refreshPOI(){
+    one_second.sleep();
+
+    cluster_pointcloud::get_barrels laser_srv;
+    if(laser_client.call(laser_srv)){
+
+        string frame = laser_srv.response.barrel_list.header.frame_id;
+        foreach (geometry_msgs::Pose current, laser_srv.response.barrel_list.poses) {
+            if(!out_of_map(current)){
+                int index = contains(points_of_interest, current);
+                taged_pose new_pose;
+                geometry_msgs::PoseStamped pose;
+                pose.header.frame_id = frame;
+                pose.pose.position = current.position;
+                pose.pose.orientation.w = 1.0;
+                new_pose.pose = pose;
+                if(index != -1){
+                    new_pose.safe = points_of_interest[index].safe;
+                    points_of_interest[index] = new_pose;
+                } else {
+                    new_pose.safe = true;
+                    points_of_interest.push_back(new_pose);
+                }
+            }
+        }
+    }
+
+    one_second.sleep();
+
+    geometry_msgs::PoseArray test;
+    foreach (taged_pose cur, points_of_interest) {
+        test.poses.push_back(cur.pose.pose);
+    }
+    test.header.frame_id = "/map";
+    test_pub.publish(test);
+
+    one_second.sleep();
+}
+
+// #####################################################################
+
+decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    init_pub.publish(initialpose);
+
+    one_second.sleep();
+
+    if(moveToNamedTarget("drive")){
+        e.riseEvent("/DONE");
+    }
+    return decision_making::TaskResult::SUCCESS();
+}
+
+decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    refreshPOI();
+
+    taged_pose current_target;
+    geometry_msgs::PoseStamped target_map;
+    geometry_msgs::PoseStamped target_base_link;
+
+    current_index = choose_next_target();
+    if(current_index < 0){
+        // No object found in scan
+        e.riseEvent("/NOTHING_FOUND");
+        return decision_making::TaskResult::SUCCESS();
+    }
+    current_target = points_of_interest[current_index];
+
+    static tf::TransformListener tf_listener;
+    ros::Time now = ros::Time::now();
+
+    // Transform next map position into base_footprint_turned
     target_map.pose.position.x = current_target.pose.pose.position.x;
     target_map.pose.position.y = current_target.pose.pose.position.y;
     target_map.pose.position.z = 0;
     target_map.pose.orientation.w = 1.0;
     target_map.header.frame_id = current_target.pose.header.frame_id;
 
-    tf_listener.waitForTransform("/base_link", "/map", now, ros::Duration(3.0));
-    tf_listener.transformPose("/base_link", target_map, target_base_link);
+    tf_listener.waitForTransform("/base_footprint_turned", "/map", now, ros::Duration(3.0));
+    tf_listener.transformPose("/base_footprint_turned", target_map, target_base_link);
 
-    // Calculate desired position for robot in base_link
-    double alpha = atan(target_base_link.pose.position.y / target_base_link.pose.position.x);
-    double x = target_base_link.pose.position.x - cos(alpha) * distanceFromObject;
-    double y = target_base_link.pose.position.y - sin(alpha) * distanceFromObject;
+    nav_goal = calculateDesiredPosition(target_base_link.pose.position.x, target_base_link.pose.position.y, true);
 
-    target_robot_base_link.pose.position.x = x;
-    target_robot_base_link.pose.position.y = y;
-
-    geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha);
-
-    target_robot_base_link.pose.orientation = quat;
-    target_robot_base_link.header.frame_id = "/base_link";
-
-    // Transform desired position for robot into map frame
-    tf_listener.waitForTransform("/map", "/base_link", now, ros::Duration(3.0));
-    tf_listener.transformPose("/map", target_robot_base_link, nav_goal);
-
-    five_seconds.sleep();
+    one_second.sleep();
     e.riseEvent("/TARGET_FOUND");
     return decision_making::TaskResult::SUCCESS();
 }
@@ -325,6 +405,7 @@ decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMC
 
 decision_making::TaskResult drive(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
+    moveToNamedTarget("drive");
     sendGoalToMovebase();
 
     my_movebase->waitForResult();
@@ -332,12 +413,12 @@ decision_making::TaskResult drive(std::string, const decision_making::FSMCallCon
     if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
         e.riseEvent("/TARGET_REACHED");
         return decision_making::TaskResult::SUCCESS();
+    } else{
+        points_of_interest[current_index].fail_counter++;
+        e.riseEvent("/DRIVING_FAILED");
+        return decision_making::TaskResult::SUCCESS();
     }
-    else{
-        return decision_making::TaskResult::FAIL();
-    }
-
-    return decision_making::TaskResult::SUCCESS();
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult turnToTarget(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -362,42 +443,72 @@ decision_making::TaskResult turnToTarget(std::string, const decision_making::FSM
         return decision_making::TaskResult::SUCCESS();
     }
     else{
-        return decision_making::TaskResult::FAIL();
+        points_of_interest[current_index].fail_counter++;
+        e.riseEvent("/TURNING_FAILED");
+        return decision_making::TaskResult::SUCCESS();
     }
 
-    return decision_making::TaskResult::SUCCESS();
+    return decision_making::TaskResult::FAIL();
 }
 
 
 decision_making::TaskResult detection(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
     if(moveToNamedTarget("search_front")){
+        opencv_detect_squares::GetObjects detection_srv;
+        if(detection_client.call(detection_srv)){
+            opencv_detect_squares::DetectedObject detected_object = detection_srv.response.result.objects[0];
+            nav_goal = calculateDesiredPosition(detected_object.pose.position.x, detected_object.pose.position.y, false);
+            object_on_robot cur;
+            cur.color = detected_object.color;
+            cur.ghs = detected_object.ghs;
+            if(strcmp(cur.ghs.c_str(), "explosive") == 0){
+                points_of_interest[current_index].safe = false;
+                e.riseEvent("/DANGER");
+                return decision_making::TaskResult::SUCCESS();
+            }
 
-        // OBJECT DETECTION VON BJÖRN HIER
+            cur.position_on_robot = next_place_on_robot;
+            objects_on_robot.push_back(cur);
 
-        e.riseEvent("/SAFE");
-        return decision_making::TaskResult::SUCCESS();
+            sendGoalToMovebase();
+
+            my_movebase->waitForResult();
+
+            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                e.riseEvent("/SAFE");
+                return decision_making::TaskResult::SUCCESS();
+            } else {
+                points_of_interest[current_index].fail_counter++;
+                e.riseEvent("/MOVE_CORRECTION_FAILED");
+                return decision_making::TaskResult::SUCCESS();
+            }
+        }
     }
-    else {
-        return decision_making::TaskResult::FAIL();
-    }
-
-    five_seconds.sleep();
     return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveAround(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    geometry_msgs::Pose pose;
-    foreach (pose, standardPoses.poses) {
-        nav_goal.pose.position = pose.position;
-        nav_goal.pose.orientation = pose.orientation;
+    if(moveToNamedTarget("drive")){
 
-        sendGoalToMovebase();
+        geometry_msgs::Pose pose;
+        foreach (pose, standardPoses.poses) {
+            nav_goal.pose.position = pose.position;
+            nav_goal.pose.orientation = pose.orientation;
 
-        while(my_movebase->getState() != actionlib::SimpleClientGoalState::SUCCEEDED){
-            if(points_of_interest.size() > 0){
-                e.riseEvent("/NEW_OBJECT");
+            sendGoalToMovebase();
+
+            my_movebase->waitForResult();
+
+            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                refreshPOI();
+                if(points_of_interest.size() > 0){
+                    e.riseEvent("/NEW_OBJECT");
+                    return decision_making::TaskResult::SUCCESS();
+                }
+            } else {
+                ROS_INFO("Could not reach standard pose for drive_around!");
             }
         }
     }
@@ -410,32 +521,28 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
 }
 
 decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-
     if(moveToNamedTarget("safety_front")){
         one_second.sleep();
         if(moveToNamedTarget("pick_front")){
             one_second.sleep();
             if(moveToNamedTarget("pick_front")){
                 one_second.sleep();
-                driveForward();
-                one_second.sleep();
-                closeGripper();
-                if(moveToNamedTarget("safety_front")){
-                    if(moveToNamedTarget("safety_back")){
-                        if(moveToNamedTarget("place_choose_" + boost::lexical_cast<std::string>(next_place_on_robot))){
+                if(driveForward()){
+                    one_second.sleep();
+                    closeGripper();
+                    if(moveToNamedTarget("safety_front")){
+                        if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                             one_second.sleep();
-                            if(moveToNamedTarget("place_choose_" + boost::lexical_cast<std::string>(next_place_on_robot))){
+                            if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                                 one_second.sleep();
-                                if(moveToNamedTarget("final" + boost::lexical_cast<std::string>(next_place_on_robot))){
+                                if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                                     one_second.sleep();
                                     openGripper();
-                                    if(moveToNamedTarget("place_choose_" + boost::lexical_cast<std::string>(next_place_on_robot))){
-                                        if(moveToNamedTarget("safety_back")){
-                                            next_place_on_robot++;
-                                            current_target.tag = false;
-                                            e.riseEvent("/PICKED");
-                                            return decision_making::TaskResult::SUCCESS();
-                                        }
+                                    if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
+                                        next_place_on_robot++;
+                                        points_of_interest.erase(points_of_interest.begin()+current_index);
+                                        e.riseEvent("/PICKED");
+                                        return decision_making::TaskResult::SUCCESS();
                                     }
                                 }
                             }
@@ -449,22 +556,154 @@ decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCa
 }
 
 decision_making::TaskResult analyzeLoad(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+    if(objects_on_robot.size() == 3){
+        unloading = true;
+    } else if(objects_on_robot.size() == 0){
+        unloading = false;
+    }
+    if(unloading){
+        bool truck_only = true;
+        foreach (object_on_robot c, objects_on_robot) {
+            if(strcmp(c.ghs.c_str(), "none")){
+                truck_only = false;
+            }
+        }
+        if(truck_only){
+            e.riseEvent("/GO_TRUCK");
+        } else {
+            e.riseEvent("/GO_CONTAINER");
+        }
+    } else {
+        e.riseEvent("/EMPTY");
+    }
     return decision_making::TaskResult::SUCCESS();
+
 }
 
 decision_making::TaskResult driveToTruck(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-    return decision_making::TaskResult::SUCCESS();
+
+    if(moveToNamedTarget("drive")){
+
+        nav_goal = truck_pose;
+
+        sendGoalToMovebase();
+
+        my_movebase->waitForResult();
+
+        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+            e.riseEvent("/TRUCK_REACHED");
+            return decision_making::TaskResult::SUCCESS();
+        } else {
+            ROS_INFO("Could not reach truck pose!");
+        }
+    }
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult placeToTruck(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-    return decision_making::TaskResult::SUCCESS();
+
+    vector<int> to_remove;
+    if(moveToNamedTarget("safety_back")){
+        for (int i = 0; i < objects_on_robot.size(); i++) {
+            object_on_robot cur = objects_on_robot[i];
+            if(strcmp(cur.ghs.c_str(), "none") != 0){
+                if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                    one_second.sleep();
+                    if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                        one_second.sleep();
+                        if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                            one_second.sleep();
+                            closeGripper();
+                            one_second.sleep();
+                            if(moveToNamedTarget("place_truck_"+ boost::lexical_cast<std::string>(next_place_on_truck))){
+                                next_place_on_truck++;
+                                to_remove.push_back(i);
+                                one_second.sleep();
+                                openGripper();
+                                one_second.sleep();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (int i = to_remove.size()-1; i >= 0; i--) {
+        objects_on_robot.erase(objects_on_robot.begin()+i);
+    }
+    if(moveToNamedTarget("drive")){
+        e.riseEvent("/PLACED_TRUCK");
+        return decision_making::TaskResult::SUCCESS();
+    }
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveToContainer(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-    return decision_making::TaskResult::SUCCESS();
+
+    if(moveToNamedTarget("drive")){
+        nav_goal = container_pose;
+
+        sendGoalToMovebase();
+
+        my_movebase->waitForResult();
+
+        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+            e.riseEvent("/TRUCK_REACHED");
+            return decision_making::TaskResult::SUCCESS();
+        } else {
+            ROS_INFO("Could not reach container pose!");
+        }
+    }
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult placeToContainer(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
+
+    vector<int> to_remove;
+    if(moveToNamedTarget("safety_back")){
+        for (int i = 0; i < objects_on_robot.size(); i++) {
+            object_on_robot cur = objects_on_robot[i];
+            if(strcmp(cur.ghs.c_str(), "none") == 0){
+                if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                    one_second.sleep();
+                    if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                        one_second.sleep();
+                        if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                            one_second.sleep();
+                            closeGripper();
+                            one_second.sleep();
+                            if(strcmp(cur.color.c_str(), "red") == 0){
+                                if(moveToNamedTarget("place_container_r")){
+                                    one_second.sleep();
+                                    openGripper();
+                                    to_remove.push_back(i);
+                                }
+                            } else if(strcmp(cur.color.c_str(), "yellow") == 0){
+                                if(moveToNamedTarget("place_container_m")){
+                                    one_second.sleep();
+                                    openGripper();
+                                    to_remove.push_back(i);
+                                }
+                            } else if(strcmp(cur.color.c_str(), "green") == 0){
+                                if(moveToNamedTarget("place_container_l")){
+                                    one_second.sleep();
+                                    openGripper();
+                                    to_remove.push_back(i);
+                                }
+                            }
+                            one_second.sleep();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (int i = to_remove.size()-1; i >= 0; i--) {
+        objects_on_robot.erase(objects_on_robot.begin()+i);
+    }
+    if(moveToNamedTarget("drive")){
+        e.riseEvent("/PLACED_CONTAINER");
+    }
     return decision_making::TaskResult::SUCCESS();
 }
 
@@ -474,7 +713,20 @@ decision_making::TaskResult stop(std::string, const decision_making::FSMCallCont
 
 int main(int argc, char **argv) {
 
-    //Set standardposes for driving around
+    // Set poses for container and truck
+    container_pose.header.frame_id = "/map";
+    container_pose.pose.position.x = -1.812;
+    container_pose.pose.position.y = -1.442;
+    container_pose.pose.orientation.z = -0.666;
+    container_pose.pose.orientation.w = 0.746;
+
+    truck_pose.header.frame_id = "/map";
+    truck_pose.pose.position.x = -0.593;
+    truck_pose.pose.position.y = -1.130;
+    truck_pose.pose.orientation.z = -0.381;
+    truck_pose.pose.orientation.w = 0.925;
+
+    // Set standardposes for driving around
     geometry_msgs::Pose pose1;
     pose1.position.x = -0.442;
     pose1.position.y = -1.275;
@@ -543,9 +795,11 @@ int main(int argc, char **argv) {
     init_pub = node->advertise<geometry_msgs::PoseWithCovarianceStamped> ("/initialpose", 1);
     brics_pub = node->advertise<brics_actuator::JointPositions> ("/arm_1/gripper_controller/position_command", 1);
     cmd_pub = node->advertise<geometry_msgs::Twist> ("/cmd_vel", 1);
+    test_pub = node->advertise<geometry_msgs::PoseArray> ("/test", 1);
 
-    // Register subscribers
-    ros::Subscriber poi_sub = node->subscribe ("/points_of_interest", 1, poiCallback);
+    // Register services
+    detection_client = node->serviceClient<opencv_detect_squares::GetObjects>("/getCVObjects");
+    laser_client = node->serviceClient<cluster_pointcloud::get_barrels>("/get_barrel_list");
 
     RosEventQueue* q = new RosEventQueue();
 
