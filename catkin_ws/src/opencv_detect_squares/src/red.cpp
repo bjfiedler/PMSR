@@ -33,7 +33,10 @@ float ref_width_2; // 2/3 der referenzbildbreite
 sensor_msgs::CameraInfo recentCamInfo;
 cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
-opencv_detect_squares::DetectedObjectArray* global_detectedObjects;
+vector<barrel> global_detectedObjects;
+
+int framesToAnalyseCount = 0;
+
 
 
 
@@ -117,22 +120,81 @@ public:
 		cv::destroyWindow("Thresholded Image");
 		cv:destroyWindow("Control");
 	}
-	
+
 	bool serviceCB(opencv_detect_squares::GetObjects::Request &req, opencv_detect_squares::GetObjects::Response &res)
 	{
+		static ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
+		
+		
 		cout<<"Sercice called\n";
-			if (global_detectedObjects != 0)
-			{
-				res.result = *global_detectedObjects;
-				return true;
-			}
+		if (framesToAnalyseCount)
 			return false;
+		if (req.numberOfFrames)
+			framesToAnalyseCount = req.numberOfFrames;
+		else
+			framesToAnalyseCount = 3*25;
+		
+		while (framesToAnalyseCount)
+			ros::Duration(0.1).sleep();
+		
+	
+		if (global_detectedObjects.size() != 0)
+		{
+			int ghs_average;
+			
+			sort(global_detectedObjects.begin(), global_detectedObjects.end(), barrelDetectionCountCompare);
+			
+			//build the message
+			opencv_detect_squares::DetectedObjectArray objects;
+			objects.objects.resize(global_detectedObjects.size());
+			objects.header.stamp = ros::Time::now();
+			objects.header.frame_id = tf_world_frame;
+			
+			for (int i = 0; i < global_detectedObjects.size(); i++)
+			{
+				ghs_average = (int)(global_detectedObjects[i].ghs_sum/global_detectedObjects[i].detection_count + 0.5);
+				switch(ghs_average)
+				{
+					case 0:
+						objects.objects[i].ghs = "none";
+						break;
+					case 1:
+						objects.objects[i].ghs = "unknown";
+						break;
+					case 2:
+						objects.objects[i].ghs = "toxic";
+						break;
+					case 3:
+						objects.objects[i].ghs = "explosive";
+						break;
+					default:
+						string s = "0";
+						s[0] += ghs_average;
+						objects.objects[i].ghs = s;
+				}
+				// 			cout<<"   --  "<<global_detectedObjects[i].ghs<<'\n';
+				objects.objects[i].type = "barrel";
+				objects.objects[i].pose = translatePixelToRealworld(global_detectedObjects[i].center);
+				objects.objects[i].color = global_detectedObjects[i].color;
+			}
+			res.result = objects;
+			
+			objectPublisher.publish(objects);
+			publishSquares(objects);
+			return true;
+		}
+		return false;
 	}
 	
 	void imageCb(const sensor_msgs::ImageConstPtr& msg)
 	{
 // 		cout<<"cam CB\n";
-		static ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
+		
+		//work only if service is called previously, else return without
+		if ( ! framesToAnalyseCount )
+			return;
+		framesToAnalyseCount--;
+		
 		cv_bridge::CvImagePtr cv_ptr;
 		try
 		{
@@ -184,27 +246,41 @@ public:
 // 		cout<<"lala"<<barrels.size()<<'\n';
 		if (barrels.size() == 0)
 			return;
-		//build the message
-		opencv_detect_squares::DetectedObjectArray* objects = new opencv_detect_squares::DetectedObjectArray();
-		objects->objects.resize(barrels.size());
-		objects->header.stamp = ros::Time::now();
-		objects->header.frame_id = tf_world_frame;
+
+		
+		//TODO insert new objects into global
+// 		global_detectedObjects = objects;
+		
+		
+		float x, y, rad, x2, y2;
+		bool newBarrel = 1;
 		for (int i = 0; i < barrels.size(); i++)
 		{
-			objects->objects[i].ghs = barrels[i].ghs;
-// 			cout<<"   --  "<<barrels[i].ghs<<'\n';
-			objects->objects[i].type = "barrel";
-			objects->objects[i].pose = translatePixelToRealworld(barrels[i].center);
-			objects->objects[i].color = barrels[i].color;
+			newBarrel = 1;
+			for (int j = 0; j < global_detectedObjects.size(); j++)
+			{
+				x = barrels[i].center.x - global_detectedObjects[j].center.x;
+				x2 = x*x;
+				
+				y = barrels[i].center.y - global_detectedObjects[j].center.y;
+				y2 = y*y;
+				
+				if ( (x2 + y2) < global_detectedObjects[j].radius2)
+				{
+					newBarrel = 0;
+					global_detectedObjects[j].center_sum += barrels[i].center;
+					global_detectedObjects[j].detection_count++;
+					global_detectedObjects[j].ghs_sum += barrels[i].ghs_sum;
+				}
+			}
+			if (newBarrel)
+			{
+				global_detectedObjects.push_back(barrels[i]);
+			}
 		}
-		delete global_detectedObjects;
-		cout <<"foo\n";
-		global_detectedObjects = objects;
 			
 			
-			
-		objectPublisher.publish(*objects);
-		publishSquares(cv_ptr->image, *objects);
+
 		
 #if debug_mode
 		
@@ -237,10 +313,12 @@ public:
 			cameraIntrinsic_inv = cameraIntrinsic.inv();
 	
 	}
-	void publishSquares(Mat& image, opencv_detect_squares::DetectedObjectArray barrels){
+	
+	
+	void publishSquares(opencv_detect_squares::DetectedObjectArray barrels){
 		static ros::Publisher posePublisher = nh_.advertise<geometry_msgs::PoseArray>(posePublishTopic,50);
 		 
-// 		circ = 0;
+// // 		circ = 0;
 		if (barrels.objects.empty())
 			return;
 		

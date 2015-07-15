@@ -4,6 +4,21 @@
 // the sequence is stored in the specified memory storage
 static std::string color_names[] = {"red", "green", "yellow"};
 
+
+
+
+bool barrelDetectionCountCompare( barrel a, barrel b)
+{
+	return a.detection_count<b.detection_count;
+}
+
+
+
+
+
+
+
+
 RotatedRect findSquares( const Mat& gray0, int cur_color)
 {
 	vector<vector<Point> > squares;
@@ -149,6 +164,8 @@ vector<barrel> findBarrels(const Mat& img, int cur_color)
 			minEnclosingCircle((Mat)approx, b.center, b.radius);
 			b.position = boundingRect((Mat)approx);
 			b.color = color_names[cur_color];
+			b.radius2 = b.radius*b.radius;
+			b.detection_count = 1;
 			barrels.push_back(b);
 			
 		}
@@ -173,13 +190,15 @@ void checkGHS(const Mat& img, vector<barrel> *barrelp, const Mat& img_color, int
 		
 		if (roi.size.width<1)
 		{
-			(*barrelp)[i].ghs = "none";
+			(*barrelp)[i].ghs_sum = 0;//"none";
+#if debug_mode
 			cout<<"roi to small\n";
+#endif
 		}
 		
 		else
 		{
-			(*barrelp)[i].ghs = decideGHS(img_color((*barrelp)[i].position), roi, cur_color);
+			(*barrelp)[i].ghs_sum = decideGHS(img_color((*barrelp)[i].position), roi, cur_color);
 // 			cout<<"roi ok\n";
 		}
 	}
@@ -216,7 +235,7 @@ void detectKeypointsInRefferenceImage(char* filename)
 
 
 
-const std::string matchFeatures(Mat& candidate, int cur_color)
+const int matchFeatures(Mat& candidate, int cur_color)
 {
 	SurfFeatureDetector detector( minHessian );
 	
@@ -281,7 +300,7 @@ const std::string matchFeatures(Mat& candidate, int cur_color)
 		#if debug_mode_verbose
 		cout<<e.what();
 		#endif
-		return "unknown";
+		return 1;//"unknown";
 	}
 	
 	//-- Get the corners from the image_1 ( the object to be "detected" )
@@ -340,17 +359,17 @@ const std::string matchFeatures(Mat& candidate, int cur_color)
 	if (meanCornerX <ref_width_1)
 	{
 // 		cout <<"explosive\n";
-		return "explosive";
+		return 4;//"explosive";
 	}
 	else if (meanCornerX < ref_width_2)
 	{
 // 		cout<<"fire\n";
-		return "fire";
+		return 3;//"fire";
 	}
 	else
 	{
 // 		cout<<"toxic\n";
-		return "toxic";
+		return 2;//"toxic";
 	}
 	
 	
@@ -388,7 +407,7 @@ double angle( Point pt1, Point pt2, Point pt0 )
 }
 
 
-const std::string decideGHS(const Mat& image, RotatedRect rect, int cur_color)
+const int decideGHS(const Mat& image, RotatedRect rect, int cur_color)
 {
 	
 	try
@@ -423,7 +442,7 @@ const std::string decideGHS(const Mat& image, RotatedRect rect, int cur_color)
 		#if debug_mode_verbose
 		cout<<e.what()<<'\n';
 		#endif
-		return "unknown";
+		return 1;
 	}
 	
 }

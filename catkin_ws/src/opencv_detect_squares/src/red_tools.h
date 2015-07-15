@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <stdlib.h>
+#include <string>
 //ROS imports
 #include <ros/ros.h>
 
@@ -59,7 +60,7 @@ extern int minHessian;
 extern SurfDescriptorExtractor extractor;
 extern FlannBasedMatcher matcher;
 void detectKeypointsInRefferenceImage(char* filename);
-const std::string matchFeatures(Mat& candidate);
+const int matchFeatures(Mat& candidate);
 
 extern float ref_width_1; // 1/3 der referenzbildbreite
 extern float ref_width_2; // 2/3 der referenzbildbreite
@@ -88,19 +89,26 @@ RotatedRect findSquares( const Mat& gray0);
 struct barrel {
 	//min Circle arround object
 	float radius;
+	float radius2;
 	Point2f center;
+	Point2f center_sum;
+	int detection_count;
 	
 	//Position in image
 	Rect position;
 	
-	string ghs;
+// 	string ghs;
+	int ghs_sum;
 	string color;
 	
 	//position in tf_world_frame
-	geometry_msgs::Pose pose;
+// 	geometry_msgs::Pose pose;
 };
+bool barrelDetectionCountCompare( barrel a, barrel b);
 
-const std::string decideGHS(const Mat& image, RotatedRect rect, int cur_color);
+
+
+const int decideGHS(const Mat& image, RotatedRect rect, int cur_color);
 void checkGHS(const Mat& img_thresh, vector<barrel> *barrelp, const Mat& img_color, int cur_color);
 
 
