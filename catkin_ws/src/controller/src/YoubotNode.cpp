@@ -37,14 +37,6 @@ struct taged_pose{
     int fail_counter;
 };
 
-struct point{
-    float x;
-    float y;
-
-};
-
-
-
 struct object_on_robot{
     // 1: left, 2: middle, 3: right
     int position_on_robot;
@@ -52,6 +44,12 @@ struct object_on_robot{
     string color;
     // none, explosive, fire, toxic, unkown
     string ghs;
+};
+
+struct point{
+    float x;
+    float y;
+
 };
 
 ros::NodeHandle* node;
@@ -76,11 +74,12 @@ geometry_msgs::PoseStamped nav_goal;
 geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
 geometry_msgs::PoseStamped container_pose;
-geometry_msgs::PoseStamped truck_pose;
+geometry_msgs::PoseStamped truck_pose_1;
+geometry_msgs::PoseStamped truck_pose_2;
 
 // Vectors
 vector<taged_pose> points_of_interest;
-vector<object_on_robot> objects_on_robot;
+object_on_robot* objects_on_robot[3];
 
 boost::shared_ptr<MoveBaseClient> my_movebase;
 boost::shared_ptr<moveit::planning_interface::MoveGroup> my_moveit;
@@ -90,10 +89,12 @@ int next_place_on_robot = 1;
 int next_place_on_truck = 1;
 int max_fail_counter = 3;
 double distanceFromObject = 0.6;
-double objectThreshold = 0.2;
+double objectThreshold = 0.15;
 double min_pick_distance = 0.8;
 bool unloading = false;
 bool last_target_failed = false;
+bool truck_half_full = false;
+bool last_unload = false;
 
 // #####################################################################
 
@@ -105,19 +106,15 @@ bool moveToNamedTarget(string target){
 bool driveForward() {
 
     geometry_msgs::Twist forward;
-    for (int i = 0; i < 2; ++i) {
-        forward.linear.x = 0.1;
+    forward.linear.x = 0.05;
 
+    ros::Time start = ros::Time::now();
+    while(ros::Time::now() - start < ros::Duration(1.5)){
         cmd_pub.publish(forward);
-
-        one_second.sleep();
-
     }
 
     forward.linear.x = 0.0;
-
     cmd_pub.publish(forward);
-
     return true;
 }
 
@@ -189,7 +186,7 @@ bool closeGripper() {
 }
 
 int contains(vector<taged_pose> points_of_interest, geometry_msgs::Pose current){
-    for (int i = 0; i < points_of_interest.size(); ++i) {
+    for (int i = 0; i < points_of_interest.size(); i++) {
         taged_pose poi = points_of_interest[i];
         double distance = sqrt(pow(poi.pose.pose.position.x - current.position.x, 2) + pow(poi.pose.pose.position.y - current.position.y, 2));
         if(distance < objectThreshold){
@@ -223,93 +220,82 @@ bool out_of_map(geometry_msgs::Pose pose){
     point4.y = -3.47;
 
     polygon.push_back(point1);
-     polygon.push_back(point2);
-     polygon.push_back(point3);
-      polygon.push_back(point4);
+    polygon.push_back(point2);
+    polygon.push_back(point3);
+    polygon.push_back(point4);
 
-      int i;
-      int j;
-      bool in_polygon = false;
-      bool out_wall = false;
-      bool out_container = false;
+    int i;
+    int j;
+    bool in_polygon = false;
+    bool out_wall = false;
+    bool out_container = false;
 
-
-
-       for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
-          if ((polygon[i].y > y) != (polygon[j].y > y) &&
-                     (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
-                  in_polygon = !in_polygon;
-                  }
-      }
-
-       polygon.clear();
-
-
-       point1.x = -0.06;
-       point1.y = 0.42;
-
-
-       point2.x = -1.74;
-       point2.y = 0.21;
-
-
-       point3.x = -1.74;
-       point3.y = 0.9;
-
-
-       point4.x = -0.17;
-       point4.y = 1.15;
-
-       polygon.push_back(point1);
-        polygon.push_back(point2);
-        polygon.push_back(point3);
-         polygon.push_back(point4);
-
-         for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
-            if ((polygon[i].y > y) != (polygon[j].y > y) &&
-                       (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
-                     out_wall = !out_wall;
-                    }
+    for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+        if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+            in_polygon = !in_polygon;
         }
+    }
 
-         out_wall = !out_wall;
+    polygon.clear();
 
-         polygon.clear();
+    point1.x = -0.06;
+    point1.y = 0.42;
 
-         point1.x = -1.35;
-         point1.y = 2.09;
+    point2.x = -1.74;
+    point2.y = 0.21;
 
+    point3.x = -1.74;
+    point3.y = 0.9;
 
-         point2.x = -2.15;
-         point2.y = -2.23;
+    point4.x = -0.17;
+    point4.y = 1.15;
 
+    polygon.push_back(point1);
+    polygon.push_back(point2);
+    polygon.push_back(point3);
+    polygon.push_back(point4);
 
-         point3.x = -2.1;
-         point3.y = -1.83;
+    for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+        if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+            out_wall = !out_wall;
+        }
+    }
 
+    out_wall = !out_wall;
 
-         point4.x = -1.39;
-         point4.y = -1.74;
+    polygon.clear();
 
-         polygon.push_back(point1);
-          polygon.push_back(point2);
-          polygon.push_back(point3);
-           polygon.push_back(point4);
+    point1.x = -1.35;
+    point1.y = 2.09;
 
-           for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
-              if ((polygon[i].y > y) != (polygon[j].y > y) &&
-                         (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
-                       out_container = !out_container;
-                      }
-          }
+    point2.x = -2.15;
+    point2.y = -2.23;
 
-           out_container = !out_container;
+    point3.x = -2.1;
+    point3.y = -1.83;
 
-           polygon.clear();
+    point4.x = -1.39;
+    point4.y = -1.74;
 
-           return in_polygon && out_container && out_wall;
+    polygon.push_back(point1);
+    polygon.push_back(point2);
+    polygon.push_back(point3);
+    polygon.push_back(point4);
 
+    for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+        if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+            out_container = !out_container;
+        }
+    }
 
+    out_container = !out_container;
+
+    polygon.clear();
+
+    return !(in_polygon && out_container && out_wall);
 }
 
 int choose_next_target(){
@@ -409,9 +395,11 @@ void refreshPOI(){
                 new_pose.pose = pose;
                 if(index != -1){
                     new_pose.safe = points_of_interest[index].safe;
+                    new_pose.fail_counter = points_of_interest[index].fail_counter;
                     points_of_interest[index] = new_pose;
                 } else {
                     new_pose.safe = true;
+                    new_pose.fail_counter = 0;
                     points_of_interest.push_back(new_pose);
                 }
             }
@@ -430,6 +418,34 @@ void refreshPOI(){
     one_second.sleep();
 }
 
+void turnNavGoalAround(){
+
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(nav_goal.pose.orientation, quat);
+
+    // the tf::Quaternion has a method to acess roll pitch and yaw
+    double roll, pitch, yaw;
+    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+
+    geometry_msgs::Quaternion quat_turned =  tf::createQuaternionMsgFromRollPitchYaw(roll, pitch, yaw + M_PI);
+
+    nav_goal.pose.orientation = quat_turned;
+
+    sendGoalToMovebase();
+}
+
+void turnCurrentPoseAround(){
+
+    geometry_msgs::PoseStamped current;
+    current.header.frame_id = "/base_footprint";
+    geometry_msgs::Quaternion quat_turned =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, M_PI);
+    current.pose.orientation = quat_turned;
+
+    nav_goal = current;
+
+    sendGoalToMovebase();
+}
+
 // #####################################################################
 
 decision_making::TaskResult initialize(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -440,8 +456,9 @@ decision_making::TaskResult initialize(std::string, const decision_making::FSMCa
 
     if(moveToNamedTarget("drive")){
         e.riseEvent("/DONE");
+        return decision_making::TaskResult::SUCCESS();
     }
-    return decision_making::TaskResult::SUCCESS();
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -502,18 +519,7 @@ decision_making::TaskResult drive(std::string, const decision_making::FSMCallCon
 
 decision_making::TaskResult turnToTarget(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    tf::Quaternion quat;
-    tf::quaternionMsgToTF(nav_goal.pose.orientation, quat);
-
-    // the tf::Quaternion has a method to acess roll pitch and yaw
-    double roll, pitch, yaw;
-    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
-
-    geometry_msgs::Quaternion quat_turned =  tf::createQuaternionMsgFromRollPitchYaw(roll, pitch, yaw + M_PI);
-
-    nav_goal.pose.orientation = quat_turned;
-
-    sendGoalToMovebase();
+    turnNavGoalAround();
 
     my_movebase->waitForResult();
 
@@ -534,39 +540,72 @@ decision_making::TaskResult turnToTarget(std::string, const decision_making::FSM
 
 decision_making::TaskResult detection(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    if(moveToNamedTarget("search_front")){
-        opencv_detect_squares::GetObjects detection_srv;
+    opencv_detect_squares::GetObjects detection_srv;
+    detection_srv.request.numberOfFrames = 0;
+    if(moveToNamedTarget("search_front_top")){
+
         if(detection_client.call(detection_srv)){
             opencv_detect_squares::DetectedObject detected_object = detection_srv.response.result.objects[0];
             nav_goal = calculateDesiredPosition(detected_object.pose.position.x, detected_object.pose.position.y, false);
-            object_on_robot cur;
-            cur.color = detected_object.color;
-            cur.ghs = detected_object.ghs;
-            if(strcmp(cur.ghs.c_str(), "explosive") == 0){
-                points_of_interest[current_index].safe = false;
-                e.riseEvent("/DANGER");
-                return decision_making::TaskResult::SUCCESS();
-            }
-
-            cur.position_on_robot = next_place_on_robot;
-            objects_on_robot.push_back(cur);
 
             sendGoalToMovebase();
 
             my_movebase->waitForResult();
 
             if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-                e.riseEvent("/SAFE");
-                return decision_making::TaskResult::SUCCESS();
+                object_on_robot *pre = new object_on_robot();
+                pre->color = detected_object.color;
+                pre->ghs = detected_object.ghs;
+                pre->position_on_robot = next_place_on_robot;
+                if(moveToNamedTarget("search_front")){
+                    if(detection_client.call(detection_srv)){
+                        opencv_detect_squares::DetectedObject detected_object = detection_srv.response.result.objects[0];
+                        nav_goal = calculateDesiredPosition(detected_object.pose.position.x, detected_object.pose.position.y, false);
+
+                        if(strcmp(detected_object.ghs.c_str(), "explosive") == 0){
+                            points_of_interest[current_index].safe = false;
+                            e.riseEvent("/DANGER");
+                            return decision_making::TaskResult::SUCCESS();
+                        }
+
+                        sendGoalToMovebase();
+
+                        my_movebase->waitForResult();
+
+                        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                            object_on_robot *cur = new object_on_robot();
+                            cur->color = detected_object.color;
+                            cur->ghs = detected_object.ghs;
+                            cur->position_on_robot = next_place_on_robot;
+                            objects_on_robot[next_place_on_robot - 1] = cur;
+                            e.riseEvent("/SAFE");
+                            return decision_making::TaskResult::SUCCESS();
+                        } else {
+                            points_of_interest[current_index].fail_counter++;
+                            last_target_failed = true;
+                            e.riseEvent("/MOVE_CORRECTION_FAILED");
+                            return decision_making::TaskResult::SUCCESS();
+                        }
+                    } else {
+                        objects_on_robot[next_place_on_robot-1] = pre;
+                        e.riseEvent("/SAFE");
+                        return decision_making::TaskResult::SUCCESS();
+                    }
+                }
             } else {
                 points_of_interest[current_index].fail_counter++;
                 last_target_failed = true;
                 e.riseEvent("/MOVE_CORRECTION_FAILED");
                 return decision_making::TaskResult::SUCCESS();
             }
+        } else {
+            points_of_interest[current_index].fail_counter++;
+            last_target_failed = true;
+            e.riseEvent("/MOVE_CORRECTION_FAILED");
+            return decision_making::TaskResult::SUCCESS();
         }
+        return decision_making::TaskResult::FAIL();
     }
-    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveAround(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -595,10 +634,17 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
     }
 
     if(points_of_interest.size() == 0){
-        e.riseEvent("/TIMEOUT");
+        if(next_place_on_robot > 1){
+            last_unload = true;
+            e.riseEvent("/LAST_UNLOAD");
+            return decision_making::TaskResult::SUCCESS();
+        } else {
+            e.riseEvent("/TIMEOUT");
+            return decision_making::TaskResult::SUCCESS();
+        }
     }
 
-    return decision_making::TaskResult::SUCCESS();
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -612,19 +658,24 @@ decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCa
                     one_second.sleep();
                     closeGripper();
                     if(moveToNamedTarget("safety_front")){
-                        if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
+                        if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                             one_second.sleep();
+                            openGripper();
                             if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
-                                one_second.sleep();
-                                if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
-                                    one_second.sleep();
-                                    openGripper();
-                                    if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
-                                        next_place_on_robot++;
-                                        points_of_interest.erase(points_of_interest.begin()+current_index);
+                                next_place_on_robot++;
+                                points_of_interest.erase(points_of_interest.begin()+current_index);
+                                if(moveToNamedTarget("safety_back")){
+                                    turnNavGoalAround();
+                                    my_movebase->waitForResult();
+                                    if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
                                         e.riseEvent("/PICKED");
                                         return decision_making::TaskResult::SUCCESS();
                                     }
+                                    else{
+                                        e.riseEvent("/PICKED");
+                                        return decision_making::TaskResult::SUCCESS();
+                                    }
+
                                 }
                             }
                         }
@@ -637,35 +688,46 @@ decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCa
 }
 
 decision_making::TaskResult analyzeLoad(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-    if(objects_on_robot.size() == 3){
+    ROS_INFO("Next Place on Robot: %d", next_place_on_robot);
+    if(next_place_on_robot > 3){
         unloading = true;
-    } else if(objects_on_robot.size() == 0){
+    } else if(next_place_on_robot == 1){
         unloading = false;
+        last_unload = false;
     }
-    if(unloading){
+    if(unloading || last_unload){
         bool truck_only = true;
-        foreach (object_on_robot c, objects_on_robot) {
-            if(strcmp(c.ghs.c_str(), "none")){
-                truck_only = false;
+        for (int i = 0; i < 3; i++) {
+            if(objects_on_robot[i] != 0){
+                ROS_INFO(objects_on_robot[i]->ghs.c_str());
+                if(strcmp(objects_on_robot[i]->ghs.c_str(), "none") == 0){
+                    truck_only = false;
+                }
             }
         }
         if(truck_only){
             e.riseEvent("/GO_TRUCK");
+            return decision_making::TaskResult::SUCCESS();
         } else {
             e.riseEvent("/GO_CONTAINER");
+            return decision_making::TaskResult::SUCCESS();
         }
     } else {
         e.riseEvent("/EMPTY");
+        return decision_making::TaskResult::SUCCESS();
     }
-    return decision_making::TaskResult::SUCCESS();
-
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveToTruck(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
     if(moveToNamedTarget("drive")){
 
-        nav_goal = truck_pose;
+        if(truck_half_full){
+            nav_goal = truck_pose_2;
+        } else {
+            nav_goal = truck_pose_1;
+        }
 
         sendGoalToMovebase();
 
@@ -675,6 +737,26 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
             e.riseEvent("/TRUCK_REACHED");
             return decision_making::TaskResult::SUCCESS();
         } else {
+            turnCurrentPoseAround();
+            my_movebase->waitForResult();
+
+            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                e.riseEvent("/TRY_TRUCK_AGAIN");
+                return decision_making::TaskResult::SUCCESS();
+            } else {
+                nav_goal.pose.position = standardPoses.poses[4].position;
+                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                sendGoalToMovebase();
+
+                my_movebase->waitForResult();
+
+                if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                    e.riseEvent("/TRY_TRUCK_AGAIN");
+                    return decision_making::TaskResult::SUCCESS();
+                }
+            }
+
             ROS_INFO("Could not reach truck pose!");
         }
     }
@@ -683,11 +765,16 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
 
 decision_making::TaskResult placeToTruck(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    vector<int> to_remove;
     if(moveToNamedTarget("safety_back")){
-        for (int i = 0; i < objects_on_robot.size(); i++) {
-            object_on_robot cur = objects_on_robot[i];
+        for (int i = 0; i < 3; i++) {
+            object_on_robot cur = *objects_on_robot[i];
             if(strcmp(cur.ghs.c_str(), "none") != 0){
+                //                if(next_place_on_truck > 3){
+                //                    next_place_on_truck = 1;
+                //                    truck_half_full = true;
+                //                    e.riseEvent("/CORRECT_TRUCK_POSITION");
+                //                    return decision_making::TaskResult::SUCCESS();
+                //                }
                 if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                     one_second.sleep();
                     if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
@@ -698,7 +785,8 @@ decision_making::TaskResult placeToTruck(std::string, const decision_making::FSM
                             one_second.sleep();
                             if(moveToNamedTarget("place_truck_"+ boost::lexical_cast<std::string>(next_place_on_truck))){
                                 next_place_on_truck++;
-                                to_remove.push_back(i);
+                                objects_on_robot[i] = 0;
+                                next_place_on_robot--;
                                 one_second.sleep();
                                 openGripper();
                                 one_second.sleep();
@@ -708,9 +796,6 @@ decision_making::TaskResult placeToTruck(std::string, const decision_making::FSM
                 }
             }
         }
-    }
-    for (int i = to_remove.size()-1; i >= 0; i--) {
-        objects_on_robot.erase(objects_on_robot.begin()+i);
     }
     if(moveToNamedTarget("drive")){
         e.riseEvent("/PLACED_TRUCK");
@@ -729,9 +814,28 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
         my_movebase->waitForResult();
 
         if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-            e.riseEvent("/TRUCK_REACHED");
+            e.riseEvent("/CONTAINER_REACHED");
             return decision_making::TaskResult::SUCCESS();
         } else {
+            turnCurrentPoseAround();
+            my_movebase->waitForResult();
+
+            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                e.riseEvent("/TRY_CONTAINER_AGAIN");
+                return decision_making::TaskResult::SUCCESS();
+            } else {
+                nav_goal.pose.position = standardPoses.poses[4].position;
+                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                sendGoalToMovebase();
+
+                my_movebase->waitForResult();
+
+                if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                    e.riseEvent("/TRY_CONTAINER_AGAIN");
+                    return decision_making::TaskResult::SUCCESS();
+                }
+            }
             ROS_INFO("Could not reach container pose!");
         }
     }
@@ -740,10 +844,9 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
 
 decision_making::TaskResult placeToContainer(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    vector<int> to_remove;
     if(moveToNamedTarget("safety_back")){
-        for (int i = 0; i < objects_on_robot.size(); i++) {
-            object_on_robot cur = objects_on_robot[i];
+        for (int i = 0; i < 3; i++) {
+            object_on_robot cur = *objects_on_robot[i];
             if(strcmp(cur.ghs.c_str(), "none") == 0){
                 if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                     one_second.sleep();
@@ -753,24 +856,19 @@ decision_making::TaskResult placeToContainer(std::string, const decision_making:
                             one_second.sleep();
                             closeGripper();
                             one_second.sleep();
+                            string target;
                             if(strcmp(cur.color.c_str(), "red") == 0){
-                                if(moveToNamedTarget("place_container_r")){
-                                    one_second.sleep();
-                                    openGripper();
-                                    to_remove.push_back(i);
-                                }
+                                target = "place_container_r";
                             } else if(strcmp(cur.color.c_str(), "yellow") == 0){
-                                if(moveToNamedTarget("place_container_m")){
-                                    one_second.sleep();
-                                    openGripper();
-                                    to_remove.push_back(i);
-                                }
+                                target = "place_container_m";
                             } else if(strcmp(cur.color.c_str(), "green") == 0){
-                                if(moveToNamedTarget("place_container_l")){
-                                    one_second.sleep();
-                                    openGripper();
-                                    to_remove.push_back(i);
-                                }
+                                target = "place_container_l";
+                            }
+                            if(moveToNamedTarget(target)){
+                                one_second.sleep();
+                                openGripper();
+                                objects_on_robot[i] = 0;
+                                next_place_on_robot--;
                             }
                             one_second.sleep();
                         }
@@ -779,9 +877,6 @@ decision_making::TaskResult placeToContainer(std::string, const decision_making:
             }
         }
     }
-    for (int i = to_remove.size()-1; i >= 0; i--) {
-        objects_on_robot.erase(objects_on_robot.begin()+i);
-    }
     if(moveToNamedTarget("drive")){
         e.riseEvent("/PLACED_CONTAINER");
     }
@@ -789,7 +884,9 @@ decision_making::TaskResult placeToContainer(std::string, const decision_making:
 }
 
 decision_making::TaskResult stop(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
-    return decision_making::TaskResult::SUCCESS();
+    if(moveToNamedTarget("folded")){
+        return decision_making::TaskResult::SUCCESS();
+    }
 }
 
 int main(int argc, char **argv) {
@@ -797,15 +894,21 @@ int main(int argc, char **argv) {
     // Set poses for container and truck
     container_pose.header.frame_id = "/map";
     container_pose.pose.position.x = -1.812;
-    container_pose.pose.position.y = -1.442;
-    container_pose.pose.orientation.z = -0.666;
-    container_pose.pose.orientation.w = 0.746;
+    container_pose.pose.position.y = -1.359;
+    container_pose.pose.orientation.z = -0.642;
+    container_pose.pose.orientation.w = 0.767;
 
-    truck_pose.header.frame_id = "/map";
-    truck_pose.pose.position.x = -0.593;
-    truck_pose.pose.position.y = -1.130;
-    truck_pose.pose.orientation.z = -0.381;
-    truck_pose.pose.orientation.w = 0.925;
+    truck_pose_1.header.frame_id = "/map";
+    truck_pose_1.pose.position.x = -0.466;
+    truck_pose_1.pose.position.y = -1.074;
+    truck_pose_1.pose.orientation.z = -0.410;
+    truck_pose_1.pose.orientation.w = 0.912;
+
+    truck_pose_2.header.frame_id = "/map";
+    truck_pose_2.pose.position.x = -0.509;
+    truck_pose_2.pose.position.y = -1.001;
+    truck_pose_2.pose.orientation.z = -0.411;
+    truck_pose_2.pose.orientation.w = 0.912;
 
     // Set standardposes for driving around
     geometry_msgs::Pose pose1;

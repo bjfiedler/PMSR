@@ -52,6 +52,7 @@ FSM_BGN
         FSM_CALL_TASK(DriveAround)
         FSM_TRANSITIONS
         {
+            FSM_ON_EVENT("/LAST_UNLOAD", FSM_NEXT(AnalyzeLoad))
             FSM_ON_EVENT("/NEW_OBJECT", FSM_NEXT(AnalyzeScan))
             FSM_ON_EVENT("/TIMEOUT", FSM_NEXT(Stop))
         }
@@ -99,6 +100,7 @@ FSM_BGN
         FSM_CALL_TASK(DriveToTruck)
         FSM_TRANSITIONS
         {
+            FSM_ON_EVENT("/TRY_TRUCK_AGAIN", FSM_NEXT(DriveToTruck))
             FSM_ON_EVENT("/TRUCK_REACHED", FSM_NEXT(PlaceToTruck))
         }
     }
@@ -107,6 +109,7 @@ FSM_BGN
         FSM_CALL_TASK(DriveToContainer)
         FSM_TRANSITIONS
         {
+            FSM_ON_EVENT("/TRY_CONTAINER_AGAIN", FSM_NEXT(DriveToContainer))
             FSM_ON_EVENT("/CONTAINER_REACHED", FSM_NEXT(PlaceToContainer))
         }
     }
@@ -116,6 +119,7 @@ FSM_BGN
         FSM_TRANSITIONS
         {
             FSM_ON_EVENT("/PLACED_TRUCK", FSM_NEXT(AnalyzeLoad))
+            FSM_ON_EVENT("/CORRECT_TRUCK_POSITION", FSM_NEXT(DriveToTruck))
         }
     }
     FSM_STATE(PlaceToContainer)
