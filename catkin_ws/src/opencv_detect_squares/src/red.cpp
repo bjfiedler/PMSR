@@ -182,8 +182,8 @@ public:
 				
 // 				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
 // 				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
-// 				ROS_INFO(objects.objects[i].pose.position.x+' '+objects.objects[i].pose.position.y);
-// 				ROS_INFO(objects.objects[i].color+' '+objects.objects[i].ghs);
+				ROS_INFO("x: %f        y: %f", objects.objects[i].pose.position.x, objects.objects[i].pose.position.y);
+				ROS_INFO("%s %s", objects.objects[i].color.c_str(), objects.objects[i].ghs.c_str());
 			}
 			res.result = objects;
 			cout<<'\n';
