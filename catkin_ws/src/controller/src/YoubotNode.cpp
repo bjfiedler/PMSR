@@ -37,6 +37,14 @@ struct taged_pose{
     int fail_counter;
 };
 
+struct point{
+    float x;
+    float y;
+
+};
+
+
+
 struct object_on_robot{
     // 1: left, 2: middle, 3: right
     int position_on_robot;
@@ -196,43 +204,112 @@ bool out_of_map(geometry_msgs::Pose pose){
     float x = pose.position.x;
     float y = pose.position.y;
 
-    float m1 = (2.41 - 1.77) / (-0.56 + 4.19);
-    float m2 = (-1.78 - 2.41) / (0.19 + 0.56);
-    float m3 = (-2.3 + 1.78) / (-3.47 - 0.19);
-    float m4 = (1.77 + 2.3) / (-4.19 + 3.47);
+    std::vector<point> polygon;
 
-    float b1 =  2.41 - (m1 * -0.56);
-    float b2 =  2.41 - (m2 * -0.56);
-    float b3 = -2.3  - (m3 * -3.47);
-    float b4 = -2.3  - (m4 * -3.47);
+    point point1;
+    point1.x = -4.19;
+    point1.y = 1.77;
 
-    bool in_polygon = (y <= (m1 * x + b1) && y >= (m3 * x + b3) && (x <= ((y - b2) / m2) && x >= ((y - b4) / m4)));
+    point point2;
+    point2.x = -0.56;
+    point2.y = 2.41;
 
-    m1 = (0.21 - 0.42) / (-1.74 + 0.06);
-    m2 = (0.9 - 0.21) / (-1.74 + 1.74);
-    m3 = (1.15 + 1.74 ) / (-0.17 + 1.74);
-    m4 = (0.42 - 1.15 )/ (-0.06 + 0.17);
+    point point3;
+    point2.x = 0.19;
+    point2.y = -1.78;
 
-    b1 = 0.21 - (m1 * -1.74);
-    b2 = 0.21 - (m2 * -1.74);
-    b3 = 1.15 - (m3 * -0.17) ;
-    b4 = 1.15 - (m4 * -0.17);
+    point point4;
+    point2.x = -2.3;
+    point2.y = -3.47;
 
-    bool out_wall = (y >= (m2 * x + b2) && (x <= ((y - b1) / m1) && x >= ((y - b3) / m3) ));
+    polygon.push_back(point1);
+     polygon.push_back(point2);
+     polygon.push_back(point3);
+      polygon.push_back(point4);
 
-    m1 = (-2.23 + 2.09) / (-2.15 + 1.35);
-    m2 = (-1.83 + 2.23) / (-2.1 + 2.15);
-    m3 = (-1.83 + 1.74 ) / (-2.1 + 1.39);
-    m4 = (-2.09 + 1.74) / (-1.35 + 1.39);
+      int i;
+      int j;
+      bool in_polygon = false;
+      bool out_wall = false;
+      bool out_container = false;
 
-    b1 = -2.23 - (m1 * -2.15);
-    b2 = -2.23 - (m2 * -2.15);
-    b3 = -1.75 - (m3 * -1.39) ;
-    b4 = -1.75 - (m4 * -1.39);
 
-    bool out_container = ((y >= (m2 * x + b2) && y <= (m4 * x + b4)) && x >= ((y - b2) / m2) );
 
-    return in_polygon && out_wall && out_container;
+       for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+          if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                     (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+                  in_polygon = !in_polygon;
+                  }
+      }
+
+       polygon.clear();
+
+
+       point1.x = -0.06;
+       point1.y = 0.42;
+
+
+       point2.x = -1.74;
+       point2.y = 0.21;
+
+
+       point2.x = -1.74;
+       point2.y = 0.9;
+
+
+       point2.x = -0.17;
+       point2.y = 1.15;
+
+       polygon.push_back(point1);
+        polygon.push_back(point2);
+        polygon.push_back(point3);
+         polygon.push_back(point4);
+
+         for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+            if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                       (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+                     out_wall = !out_wall;
+                    }
+        }
+
+         out_wall = !out_wall;
+
+         polygon.clear();
+
+         point1.x = -1.35;
+         point1.y = 2.09;
+
+
+         point2.x = -2.15;
+         point2.y = -2.23;
+
+
+         point2.x = -2.1;
+         point2.y = -1.83;
+
+
+         point2.x = -1.39;
+         point2.y = -1.74;
+
+         polygon.push_back(point1);
+          polygon.push_back(point2);
+          polygon.push_back(point3);
+           polygon.push_back(point4);
+
+           for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+              if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                         (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+                       out_container = !out_container;
+                      }
+          }
+
+           out_container = !out_container;
+
+           polygon.clear();
+
+           return in_polygon && out_container && out_wall;
+
+
 }
 
 int choose_next_target(){
