@@ -311,6 +311,8 @@ public:
 	void cameraInfoCb(const sensor_msgs::CameraInfo& msg)
 	{
 		// 		cout<<"camInfoCB  "<<msg<<'\n';
+		if (msg.header.frame_id.compare("rgb_frame") != 0)
+			return;
 		if (9 != msg.K.size())
 			cout<<"Wrong size of Camera Intrinsic Matrix K";
 		
@@ -326,7 +328,10 @@ public:
 			}
 		}
 		if (changed) 
+		{
 			cameraIntrinsic_inv = cameraIntrinsic.inv();
+			cout<<"intrinsic changed\n";
+		}
 		
 	}
 	

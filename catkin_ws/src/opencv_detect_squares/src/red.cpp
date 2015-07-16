@@ -78,6 +78,7 @@ class ImageConverter
 	ros::Subscriber cameraInfo_subscriber_;
 	tf::TransformListener listener;
 	ros::ServiceServer objectServer;
+// 	ros::Publisher objectPublisher = nh_.advertise<opencv_detect_squares::DetectedObjectArray>(objectPublishTopic,50);
 	
 	
 public:
@@ -136,7 +137,7 @@ public:
 			framesToAnalyseCount = 3*25;
 		
 		while (framesToAnalyseCount)
-			ros::Duration(0.1).sleep();
+			ros::spinOnce();
 		
 	
 		if (global_detectedObjects.size() != 0)
@@ -177,13 +178,18 @@ public:
 				objects.objects[i].type = "barrel";
 				objects.objects[i].pose = translatePixelToRealworld(global_detectedObjects[i].center);
 				objects.objects[i].color = global_detectedObjects[i].color;
+				
+				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
+				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
 			}
 			res.result = objects;
+			cout<<'\n';
 			
 			objectPublisher.publish(objects);
 			publishSquares(objects);
 			return true;
 		}
+		cout<<"nothing found\n";
 		return false;
 	}
 	
@@ -194,6 +200,7 @@ public:
 		//work only if service is called previously, else return without
 		if ( ! framesToAnalyseCount )
 			return;
+// 		cout<<framesToAnalyseCount<<'\n';
 		framesToAnalyseCount--;
 		
 		cv_bridge::CvImagePtr cv_ptr;
@@ -296,6 +303,10 @@ public:
 	void cameraInfoCb(const sensor_msgs::CameraInfo& msg)
 	{
 // 		cout<<"camInfoCB  "<<msg<<'\n';
+		if (msg.header.frame_id.compare("rgb_frame") != 0)
+			return;
+		
+		
 		if (9 != msg.K.size())
 			cout<<"Wrong size of Camera Intrinsic Matrix K";
 		
@@ -346,6 +357,8 @@ private:
 	geometry_msgs::Pose translatePixelToRealworld(Point2f pos) //x,y Pixels where GHS sign is located
 	{
 		tf::StampedTransform transform;
+// 		pos.x - 320;
+// 		pos.y - 240;
 		cv::Matx31f image_point(pos.x,pos.y,1);
 		
 
