@@ -128,7 +128,8 @@ public:
 		global_detectedObjects.clear();
 		
 		
-		cout<<"Sercice called\n";
+// 		cout<<"Sercice called\n";
+		ROS_INFO("Sercice called");
 		if (framesToAnalyseCount)
 			return false;
 		if (req.numberOfFrames)
@@ -179,8 +180,10 @@ public:
 				objects.objects[i].pose = translatePixelToRealworld(global_detectedObjects[i].center);
 				objects.objects[i].color = global_detectedObjects[i].color;
 				
-				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
-				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
+// 				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
+// 				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
+// 				ROS_INFO(objects.objects[i].pose.position.x+' '+objects.objects[i].pose.position.y);
+// 				ROS_INFO(objects.objects[i].color+' '+objects.objects[i].ghs);
 			}
 			res.result = objects;
 			cout<<'\n';
@@ -189,7 +192,8 @@ public:
 			publishSquares(objects);
 			return true;
 		}
-		cout<<"nothing found\n";
+// 		cout<<"nothing found\n";
+		ROS_INFO("nothing found");
 		return false;
 	}
 	
@@ -447,7 +451,10 @@ int main(int argc, char** argv)
 	if (! reference)
 	{
 		cout<<"Kein Referenzbild angegeben\n";
-		return -1;
+		cout<<"fallback auf /home/rts/ros_workspace/catkin_ws/src/opencv_detect_squares/src/ghs_all2.png\n";
+		ROS_ERROR("Kein Referenzbild angegeben");
+		ROS_ERROR("fallback auf /home/rts/ros_workspace/catkin_ws/src/opencv_detect_squares/src/ghs_all2.png\n");
+		detectKeypointsInRefferenceImage("/home/rts/ros_workspace/catkin_ws/src/opencv_detect_squares/src/ghs_all2.png");
 	}
 		
 	if (vrep)

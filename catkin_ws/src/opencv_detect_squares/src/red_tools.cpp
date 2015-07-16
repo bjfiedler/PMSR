@@ -158,7 +158,7 @@ vector<barrel> findBarrels(const Mat& img, int cur_color)
 		if (fabs(cv::contourArea((Mat)approx)) < 100 || !cv::isContourConvex(approx))
 			continue;
 
-		if (approx.size() > 6)
+		//if (approx.size() > 6)
 		{
 			barrel b;
 			minEnclosingCircle((Mat)approx, b.center, b.radius);
@@ -291,9 +291,17 @@ const int matchFeatures(Mat& candidate, int cur_color)
 		scene.push_back( keypoints_reference[ good_matches[i].trainIdx ].pt );
 	}
 	Mat H;
+	vector<Point2f> obj_corners(4);
+	vector<Point2f> scene_corners(4);
 	try
 	{
 		H = findHomography( obj, scene, CV_RANSAC );
+	
+	//-- Get the corners from the image_1 ( the object to be "detected" )
+	obj_corners[0] = cvPoint(0,0); obj_corners[1] = cvPoint( candidate.cols, 0 );
+	obj_corners[2] = cvPoint( candidate.cols, candidate.rows ); obj_corners[3] = cvPoint( 0, candidate.rows );
+	
+	perspectiveTransform( obj_corners, scene_corners, H);
 	}
 	catch (exception& e)
 	{
@@ -302,14 +310,6 @@ const int matchFeatures(Mat& candidate, int cur_color)
 		#endif
 		return 1;//"unknown";
 	}
-	
-	//-- Get the corners from the image_1 ( the object to be "detected" )
-	vector<Point2f> obj_corners(4);
-	obj_corners[0] = cvPoint(0,0); obj_corners[1] = cvPoint( candidate.cols, 0 );
-	obj_corners[2] = cvPoint( candidate.cols, candidate.rows ); obj_corners[3] = cvPoint( 0, candidate.rows );
-	vector<Point2f> scene_corners(4);
-	
-	perspectiveTransform( obj_corners, scene_corners, H);
 	
 	Point2f meanCorner;
 	meanCorner += scene_corners[0];
@@ -440,7 +440,7 @@ const int decideGHS(const Mat& image, RotatedRect rect, int cur_color)
 	catch (exception& e)
 	{
 		#if debug_mode_verbose
-		cout<<e.what()<<'\n';
+// 		cout<<e.what()<<'\n';
 		#endif
 		return 1;
 	}
