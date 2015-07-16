@@ -202,11 +202,11 @@ bool out_of_map(geometry_msgs::Pose pose){
     float m4 = (1.77 + 2.3) / (-4.19 + 3.47);
 
     float b1 =  2.41 - (m1 * -0.56);
-    float b2 = 2.41 - (m2 * -0.56);
-    float b3 = -2.3 - (m3 * -3.47);
-    float b4 = -2.3 - (m4 * -3.47);
+    float b2 =  2.41 - (m2 * -0.56);
+    float b3 = -2.3  - (m3 * -3.47);
+    float b4 = -2.3  - (m4 * -3.47);
 
-    bool in_polygon = (y <= (m1 * x + b1) && y >= (m3 * x + b3) && x <= ((y - b2) / m2) && x >= ((y - b4) / m4));
+    bool in_polygon = ((y <= (m1 * x + b1) || y >= (m3 * x + b3)) && (x <= ((y - b2) / m2) || x >= ((y - b4) / m4)));
 
     m1 = (0.21 - 0.42) / (-1.74 + 0.06);
     m2 = (0.9 - 0.21) / (-1.74 + 1.74);
@@ -218,7 +218,7 @@ bool out_of_map(geometry_msgs::Pose pose){
     b3 = 1.15 - (m3 * -0.17) ;
     b4 = 1.15 - (m4 * -0.17);
 
-    bool out_wall = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
+    bool out_wall = (y >= (m2 * x + b2) && (x <= ((y - b1) / m1) || x >= ((y - b3) / m3) ));
 
     m1 = (-2.23 + 2.09) / (-2.15 + 1.35);
     m2 = (-1.83 + 2.23) / (-2.1 + 2.15);
@@ -230,7 +230,7 @@ bool out_of_map(geometry_msgs::Pose pose){
     b3 = -1.75 - (m3 * -1.39) ;
     b4 = -1.75 - (m4 * -1.39);
 
-    bool out_container = (y >= (m2 * x + b1) && y <= (m4 * x + b4) && x <= ((y - b1) / m1) && x >= ((y - b2) / m2) );
+    bool out_container = ((y >= (m2 * x + b2) || y <= (m4 * x + b4)) && x >= ((y - b2) / m2) );
 
     return in_polygon && out_wall && out_container;
 }
