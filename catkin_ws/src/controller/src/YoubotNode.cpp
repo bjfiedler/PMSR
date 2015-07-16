@@ -215,12 +215,12 @@ bool out_of_map(geometry_msgs::Pose pose){
     point2.y = 2.41;
 
     point point3;
-    point2.x = 0.19;
-    point2.y = -1.78;
+    point3.x = 0.19;
+    point3.y = -1.78;
 
     point point4;
-    point2.x = -2.3;
-    point2.y = -3.47;
+    point4.x = -2.3;
+    point4.y = -3.47;
 
     polygon.push_back(point1);
      polygon.push_back(point2);
@@ -253,12 +253,12 @@ bool out_of_map(geometry_msgs::Pose pose){
        point2.y = 0.21;
 
 
-       point2.x = -1.74;
-       point2.y = 0.9;
+       point3.x = -1.74;
+       point3.y = 0.9;
 
 
-       point2.x = -0.17;
-       point2.y = 1.15;
+       point4.x = -0.17;
+       point4.y = 1.15;
 
        polygon.push_back(point1);
         polygon.push_back(point2);
@@ -284,12 +284,12 @@ bool out_of_map(geometry_msgs::Pose pose){
          point2.y = -2.23;
 
 
-         point2.x = -2.1;
-         point2.y = -1.83;
+         point3.x = -2.1;
+         point3.y = -1.83;
 
 
-         point2.x = -1.39;
-         point2.y = -1.74;
+         point4.x = -1.39;
+         point4.y = -1.74;
 
          polygon.push_back(point1);
           polygon.push_back(point2);
