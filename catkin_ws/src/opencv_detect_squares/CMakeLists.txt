@@ -119,6 +119,9 @@ add_executable(water_all src/water_all.cpp)
 add_executable(dummyPublisher src/dummyPublisher.cpp)
 add_executable(hsvSeparator src/hsvSeparator.cpp)
 
+
+add_executable(red_only_separate src/red_only_separate.cpp src/red_tools.cpp)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(openCV_test_node openCV_test_generate_messages_cpp)
@@ -145,6 +148,10 @@ target_link_libraries(dummyPublisher
 					  ${OpenCV_LIBRARIES}
 					  )
 target_link_libraries(hsvSeparator
+					  ${catkin_LIBRARIES}
+					  ${OpenCV_LIBRARIES}
+					  )
+target_link_libraries(red_only_separate
 					  ${catkin_LIBRARIES}
 					  ${OpenCV_LIBRARIES}
 					  )
