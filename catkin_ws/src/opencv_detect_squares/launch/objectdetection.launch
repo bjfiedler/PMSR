@@ -1,6 +1,6 @@
 <launch>
   <include file="$(find ros_depthsense_camera)/launch/depthsense.launch" />
 
-  <node name="GHS_Sign_Detector" pkg="opencv_detect_squares" type="red" args="$(find opencv_detect_squares)/src/ghs_all2.png"/>
+  <node name="GHS_Sign_Detector" pkg="opencv_detect_squares" type="red" args="$(find opencv_detect_squares)/src/ghs_all2.png" output="screen" />
 
 </launch>
