@@ -57,7 +57,9 @@ geometry_msgs
  add_service_files(
   FILES
 
- get_barrels.srv
+ 	get_barrels.srv
+	get_truck.srv
+	
  )
 
 ## Generate actions in the 'action' folder

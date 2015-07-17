@@ -20,17 +20,20 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
+#include "cluster_pointcloud/get_truck.h"
+
+#include "tf/transform_listener.h"
+
 #include <math.h>
 
 #include <iostream>
 #include <stdlib.h>
 
 
+geometry_msgs::PoseArray truck_pose;
+
 ros::Publisher pub;
 
-ros::Publisher pub_pose;
-
-ros::Publisher pub_load_area;
 
 
 
@@ -46,58 +49,6 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_f (new pcl::PointCloud<pcl::PointXYZ>);
 
-/*
-
-  std::cout << "PointCloud before filtering has: " << cloud->points.size() << " data points." << std::endl;
-
-  pcl::VoxelGrid<pcl::PointXYZ> vg;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZ>);
-    vg.setInputCloud (cloud);
-    vg.setLeafSize (0.01f, 0.01f, 0.01f);
-    vg.filter (*cloud_filtered);
-    std::cout << "PointCloud after filtering has: " << cloud_filtered->points.size ()  << " data points." << std::endl; //*
-
-    // Create the segmentation object for the planar model and set all the parameters
-    pcl::SACSegmentation<pcl::PointXYZ> seg;
-    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_plane (new pcl::PointCloud<pcl::PointXYZ> ());
-    pcl::PCDWriter writer;
-    seg.setOptimizeCoefficients (true);
-    seg.setModelType (pcl::SACMODEL_PLANE);
-    seg.setMethodType (pcl::SAC_RANSAC);
-    seg.setMaxIterations (100);
-    seg.setDistanceThreshold (0.02);
-
-    int i=0, nr_points = (int) cloud_filtered->points.size ();
-    while (cloud_filtered->points.size () > 1 * nr_points)  //0.3
-    {
-      // Segment the largest planar component from the remaining cloud
-      seg.setInputCloud (cloud_filtered);
-      seg.segment (*inliers, *coefficients);
-      if (inliers->indices.size () == 0)
-      {
-        std::cout << "Could not estimate a planar model for the given dataset." << std::endl;
-        break;
-      }
-
-      // Extract the planar inliers from the input cloud
-      pcl::ExtractIndices<pcl::PointXYZ> extract;
-      extract.setInputCloud (cloud_filtered);
-      extract.setIndices (inliers);
-      extract.setNegative (false);
-
-      // Get the points associated with the planar surface
-      extract.filter (*cloud_plane);
-      std::cout << "PointCloud representing the planar component: " << cloud_plane->points.size () << " data points." << std::endl;
-
-      // Remove the planar inliers, extract the rest
-      extract.setNegative (true);
-      extract.filter (*cloud_f);
-      *cloud_filtered = *cloud_f;
-    }
-
-    */
 
 
     // Creating the KdTree object for the search method of the extraction
@@ -106,7 +57,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-    ec.setClusterTolerance (0.8); // 6cm
+    ec.setClusterTolerance (0.08); // 6cm
     ec.setMinClusterSize (10); // 100
     //ec.setMaxClusterSize (600); // 25000
     ec.setSearchMethod (tree);
@@ -134,26 +85,40 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
 
     float object_width;
-    float distance = 10000000;
-    float tem_distance;
 
-    sensor_msgs::PointCloud2 pointcloud2 ;
-
-    float  x_pose = 0;
-    float y_pose = 0;
-    float z_pose = 0;
 
     int truck_counter = 0;
 
-    bool load_area = false;
+
+   static  tf::TransformListener listener;
 
 
 
-      geometry_msgs::PoseStamped truck_pose;
+      geometry_msgs::PoseStamped begin_truck_pose;
 
-      geometry_msgs::PoseStamped pose_load_area;
+      begin_truck_pose.header.frame_id = "/base_link";
 
-      bool found_truck = false;
+      begin_truck_pose.pose.orientation.w = 1.0;
+
+      geometry_msgs::PoseStamped end_truck_pose;
+
+      end_truck_pose.header.frame_id = "/base_link";
+
+      end_truck_pose.pose.orientation.w = 1.0;
+
+      geometry_msgs::PoseStamped map_begin_truck_pose;
+
+      map_begin_truck_pose.header.frame_id = "/map";
+
+      map_begin_truck_pose.pose.orientation.w = 1.0;
+
+      geometry_msgs::PoseStamped map_end_truck_pose;
+
+      map_end_truck_pose.header.frame_id = "/map";
+
+      map_end_truck_pose.pose.orientation.w = 1.0;
+
+     int index;
 
 
     for(int i = 0; i < clouds_list.size(); i++){
@@ -172,115 +137,62 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
         float b = y1 - (m * x1);
 
-        if((object_width >= 0.80f) && (object_width <= 0.90f)){ // 0.18 breit 0.84 lang
+        if((object_width >= 0.83f) && (object_width <= 0.86f)){ // 0.18 breit 0.84 lang
 
-            for(int i = 0; i < tem_publish_cloud->points.size(); i++){
-                x_pose = x_pose + tem_publish_cloud->points[i].x;
-                y_pose = y_pose + tem_publish_cloud->points[i].y;
-                z_pose = z_pose + tem_publish_cloud->points[i].z;
-            }
+             truck_counter = truck_counter + 1;
 
 
+              begin_truck_pose.pose.position.x = x1;
+              begin_truck_pose.pose.position.y = y1;
 
-            x_pose = x_pose / tem_publish_cloud->points.size();
-            y_pose = y_pose / tem_publish_cloud->points.size();
-            z_pose = z_pose / tem_publish_cloud->points.size();
+              end_truck_pose.pose.position.x = x2;
+               end_truck_pose.pose.position.y = y2;
 
-
-            truck_pose.pose.position.x = x_pose;
-            truck_pose.pose.position.y = y_pose;
-            truck_pose.pose.position.z = z_pose;
-
-            truck_pose.header.frame_id = "/base_link";
-            truck_pose.header.stamp = ros::Time::now();
-
-            pcl::toROSMsg(*tem_publish_cloud, pointcloud2);
-
-            pointcloud2.header.frame_id = "/base_link";
-            pointcloud2.header.stamp = ros::Time::now();
-
-            found_truck = true;
-
-            truck_counter = truck_counter + 1;
-
-            float d_point = 0;
-
-            if((object_width >= 0.83f) && (object_width <= 0.85f)){
-
-
-
-                 x1 = tem_publish_cloud->points[1].x;
-                y1 = tem_publish_cloud->points[1].y;
-                 x2 = tem_publish_cloud->points[tem_publish_cloud->points.size() - 2].x;
-                 y2 = tem_publish_cloud->points[tem_publish_cloud->points.size() - 2].y;
-
-                for(int i = 0; i < tem_publish_cloud->points.size(); i++){
-
-                    float x = tem_publish_cloud->points[i].x;
-                    float y = tem_publish_cloud->points[i].y;
-
-                float zaehler = (y2 - y1) ;
-                float nenner =  (x1 - x2);
-
-                float m = zaehler / nenner;
-
-
-
-                float d = fabs( (m * (x - x1) - y + y1)) / sqrt( pow(zaehler, 2) + pow(nenner, 2));
-
-                if(d > d_point){
-
-                    d_point = d;
-                    pose_load_area.pose.position.x = x;
-                    pose_load_area.pose.position.y = y;
-                    pose_load_area.pose.position.z = 0;
-
-                    pose_load_area.header.frame_id = "/base_link";
-                    pose_load_area.header.stamp = ros::Time::now();
-
-                    load_area = true;
-
+               index = i;
                 }
+         }
 
-                }
-            }
+    if(truck_counter == 1){
 
 
+        listener.waitForTransform("/map", "/base_link", ros::Time::now(), ros::Duration(3.0));
+        listener.transformPose("/map", begin_truck_pose, map_begin_truck_pose);
+        listener.transformPose("/map", end_truck_pose, map_end_truck_pose);
+
+        truck_pose.poses.clear();
+        truck_pose.poses.push_back(map_begin_truck_pose.pose);
+        truck_pose.poses.push_back(map_end_truck_pose.pose);
+
+        sensor_msgs::PointCloud2 pub_cloud;
+
+        pcl::toROSMsg(*clouds_list[index], pub_cloud);
+
+        pub_cloud.header.frame_id = "/base_link";
+
+        pub.publish(pub_cloud);
 
         }
-    }
+
+}
 
 
-    if(found_truck && (truck_counter == 1)){
-        ROS_INFO("Truck found :)");
-        pub.publish(pointcloud2);
-        pub_pose.publish(truck_pose);
-        /*if(load_area)
-             //pub_load_area.publish(pose_load_area);
-         */
+
+
+
+
+
+bool get_truck(cluster_pointcloud::get_truck::Request  &req,
+         cluster_pointcloud::get_truck::Response &res)
+{
+
+    truck_pose.header.frame_id = "/map";
+
+    if(truck_pose.poses.size() == 0){
+        return false;
     }else{
-         ROS_INFO("Truck not found :(");
+        res.truck_pose = truck_pose ;
+        return true;
     }
-
-
-
-
-
-     /* sensor_msgs::PointCloud2 pointcloud2 ;
-
-
-      pcl::toROSMsg(*publish_cloud, pointcloud2);
-
-      pointcloud2.header.frame_id = "/base_laser_back_link";
-      pointcloud2.header.stamp = ros::Time::now();
-
-
-
-
-      pub_pose.publish(pose);
-
-      */
-
 
 }
 
@@ -293,16 +205,16 @@ main (int argc, char** argv)
   ros::init (argc, argv, "find_truck");
   ros::NodeHandle nh;
 
-   pub = nh.advertise<sensor_msgs::PointCloud2>("/truck", 1);
 
-   pub_pose=nh.advertise<geometry_msgs::PoseStamped>("/truck_pose",1);
 
-    pub_load_area = nh.advertise<geometry_msgs::PoseStamped>("/load_area",1);
+     ros::ServiceServer service = nh.advertiseService("get_truck", get_truck);
 
 
 
   // Create a ROS subscriber for the input point cloud
   ros::Subscriber sub = nh.subscribe ("/laser_cloud", 1, cloud_cb);
+
+    pub = nh.advertise<sensor_msgs::PointCloud2>("/truck", 1);
 
 
 
