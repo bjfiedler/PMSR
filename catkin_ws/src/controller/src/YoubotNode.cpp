@@ -23,6 +23,8 @@
 #include "Youbot.h"
 #include "tf/transform_listener.h"
 #include "opencv_detect_squares/GetObjects.h"
+#include "opencv_detect_squares/GetContainerRect.h"
+#include "cluster_pointcloud/get_truck.h"
 #include "cluster_pointcloud/get_barrels.h"
 
 using namespace std;
@@ -68,6 +70,8 @@ ros::Publisher test_pub;
 // Services
 ros::ServiceClient detection_client;
 ros::ServiceClient laser_client;
+ros::ServiceClient container_client;
+ros::ServiceClient truck_client;
 
 // Poses
 geometry_msgs::PoseStamped nav_goal;
@@ -75,7 +79,7 @@ geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
 geometry_msgs::PoseStamped container_pose;
 geometry_msgs::PoseStamped truck_pose_1;
-geometry_msgs::PoseStamped truck_pose_2;
+//geometry_msgs::PoseStamped truck_pose_2;
 
 // Vectors
 vector<taged_pose> points_of_interest;
@@ -88,7 +92,9 @@ int current_index;
 int next_place_on_robot = 1;
 int next_place_on_truck = 1;
 int max_fail_counter = 3;
-double distanceFromObject = 0.6;
+double distanceFromObject = 0.65;
+double distanceFromTruck = 0.5;
+double distanceFromContainer = -0.55;
 double objectThreshold = 0.15;
 double min_pick_distance = 0.8;
 bool unloading = false;
@@ -437,11 +443,14 @@ void turnNavGoalAround(){
 void turnCurrentPoseAround(){
 
     geometry_msgs::PoseStamped current;
-    current.header.frame_id = "/base_footprint";
+    current.header.frame_id = "/base_footprint_turned";
     geometry_msgs::Quaternion quat_turned =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, M_PI);
     current.pose.orientation = quat_turned;
 
-    nav_goal = current;
+    static tf::TransformListener tf_listener;
+    ros::Time now = ros::Time::now();
+    tf_listener.waitForTransform("/map", "/base_footprint_turned", now, ros::Duration(3.0));
+    tf_listener.transformPose("/map", current, nav_goal);
 
     sendGoalToMovebase();
 }
@@ -627,8 +636,6 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
                     e.riseEvent("/NEW_OBJECT");
                     return decision_making::TaskResult::SUCCESS();
                 }
-            } else {
-                ROS_INFO("Could not reach standard pose for drive_around!");
             }
         }
     }
@@ -724,18 +731,99 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
     if(moveToNamedTarget("drive")){
 
         if(truck_half_full){
-            nav_goal = truck_pose_2;
-        } else {
-            nav_goal = truck_pose_1;
+            distanceFromTruck = 0.7;
         }
+
+        nav_goal = truck_pose_1;
 
         sendGoalToMovebase();
 
         my_movebase->waitForResult();
 
         if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-            e.riseEvent("/TRUCK_REACHED");
-            return decision_making::TaskResult::SUCCESS();
+
+            cluster_pointcloud::get_truck truck_srv;
+            if(truck_client.call(truck_srv)){
+
+                geometry_msgs::Pose l = truck_srv.response.truck_pose.poses[0];
+                geometry_msgs::Pose r = truck_srv.response.truck_pose.poses[1];
+
+                double x_pre = r.position.x - l.position.x;
+                double y_pre = r.position.y - l.position.y;
+
+                double x_vec = y_pre;
+                double y_vec = -x_pre;
+                double x_st = x_pre * 0.32 + l.position.x;
+                double y_st = y_pre * 0.32 + l.position.y;
+
+                // Normierung
+                double norm = 1/(sqrt(pow(x_vec,2) + pow(y_vec,2)));
+                double x = x_st + distanceFromTruck * x_vec * norm;
+                double y = y_st + distanceFromTruck * y_vec * norm;
+
+                double alpha;
+                if(x_pre > 0 && y_pre > 0){
+                    alpha = atan(y_pre / x_pre);
+                } else if(x_pre > 0 && y_pre < 0){
+                    alpha = atan(y_pre / x_pre) + 2*M_PI;
+                } else if(x_pre < 0) {
+                    alpha = atan(y_pre / x_pre) + M_PI;
+                } else if(x_pre == 0 && y_pre > 0){
+                    alpha = M_PI / 2;
+                } else if(x_pre == 0 && y_pre < 0){
+                    3*M_PI / 2;
+                }
+
+                nav_goal.pose.position.x = x;
+                nav_goal.pose.position.y = y;
+
+                geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha+M_PI/2);
+                nav_goal.pose.orientation = quat;
+
+                sendGoalToMovebase();
+
+                my_movebase->waitForResult();
+                if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                    e.riseEvent("/TRUCK_REACHED");
+                    return decision_making::TaskResult::SUCCESS();
+                } else {
+                    nav_goal = truck_pose_1;
+
+                    sendGoalToMovebase();
+
+                    my_movebase->waitForResult();
+
+                    if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                        e.riseEvent("/TRUCK_REACHED");
+                        return decision_making::TaskResult::SUCCESS();
+                    } else {
+                        turnCurrentPoseAround();
+                        my_movebase->waitForResult();
+
+                        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                            e.riseEvent("/TRY_TRUCK_AGAIN");
+                            return decision_making::TaskResult::SUCCESS();
+                        } else {
+                            nav_goal.pose.position = standardPoses.poses[4].position;
+                            nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                            sendGoalToMovebase();
+
+                            my_movebase->waitForResult();
+
+                            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                                e.riseEvent("/TRY_TRUCK_AGAIN");
+                                return decision_making::TaskResult::SUCCESS();
+                            }
+                        }
+                    }
+                }
+            } else {
+                e.riseEvent("/TRUCK_REACHED");
+                return decision_making::TaskResult::SUCCESS();
+            }
+
+
         } else {
             turnCurrentPoseAround();
             my_movebase->waitForResult();
@@ -756,8 +844,6 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                     return decision_making::TaskResult::SUCCESS();
                 }
             }
-
-            ROS_INFO("Could not reach truck pose!");
         }
     }
     return decision_making::TaskResult::FAIL();
@@ -769,12 +855,12 @@ decision_making::TaskResult placeToTruck(std::string, const decision_making::FSM
         for (int i = 0; i < 3; i++) {
             object_on_robot cur = *objects_on_robot[i];
             if(strcmp(cur.ghs.c_str(), "none") != 0){
-                //                if(next_place_on_truck > 3){
-                //                    next_place_on_truck = 1;
-                //                    truck_half_full = true;
-                //                    e.riseEvent("/CORRECT_TRUCK_POSITION");
-                //                    return decision_making::TaskResult::SUCCESS();
-                //                }
+                if(next_place_on_truck > 3){
+                    next_place_on_truck = 1;
+                    truck_half_full = true;
+                    e.riseEvent("/CORRECT_TRUCK_POSITION");
+                    return decision_making::TaskResult::SUCCESS();
+                }
                 if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                     one_second.sleep();
                     if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
@@ -814,8 +900,117 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
         my_movebase->waitForResult();
 
         if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-            e.riseEvent("/CONTAINER_REACHED");
-            return decision_making::TaskResult::SUCCESS();
+            if(moveToNamedTarget("search_container")){
+
+                opencv_detect_squares::GetContainerRect container_srv;
+                container_srv.request.numberOfFrames = 0;
+
+                if(container_client.call(container_srv)){
+                    geometry_msgs::PoseArray detected_array = container_srv.response.rect;
+                    int smallest_x = -1;
+                    int second_smallest_x = -1;
+                    double x_cur = 100.0;
+                    for (int i = 0; i < 4; ++i) {
+                        if(detected_array.poses[i].position.x < x_cur){
+                            second_smallest_x = smallest_x;
+                            smallest_x = i;
+                            x_cur = detected_array.poses[i].position.x;
+                        }
+                    }
+
+                    geometry_msgs::Pose l;
+                    geometry_msgs::Pose r;
+
+                    if(detected_array.poses[smallest_x].position.y < detected_array.poses[second_smallest_x].position.y){
+                        l = detected_array.poses[second_smallest_x];
+                        r = detected_array.poses[smallest_x];
+                    } else {
+                        r = detected_array.poses[second_smallest_x];
+                        l = detected_array.poses[smallest_x];
+                    }
+
+                    double x_pre = r.position.x - l.position.x;
+                    double y_pre = r.position.y - l.position.y;
+
+                    double x_vec = y_pre;
+                    double y_vec = -x_pre;
+                    double x_st = x_pre * 0.5 + l.position.x;
+                    double y_st = y_pre * 0.5 + l.position.y;
+
+                    // Normierung
+                    double norm = 1/(sqrt(pow(x_vec,2) + pow(y_vec,2)));
+                    double x = x_st + distanceFromContainer * x_vec * norm;
+                    double y = y_st + distanceFromContainer * y_vec * norm;
+
+                    double alpha;
+                    if(x_pre > 0 && y_pre > 0){
+                        alpha = atan(y_pre / x_pre);
+                    } else if(x_pre > 0 && y_pre < 0){
+                        alpha = atan(y_pre / x_pre) + 2*M_PI;
+                    } else if(x_pre < 0) {
+                        alpha = atan(y_pre / x_pre) + M_PI;
+                    } else if(x_pre == 0 && y_pre > 0){
+                        alpha = M_PI / 2;
+                    } else if(x_pre == 0 && y_pre < 0){
+                        3*M_PI / 2;
+                    }
+
+                    geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha-M_PI/2);
+                    geometry_msgs::PoseStamped c;
+                    c.pose.position.x = x;
+                    c.pose.position.y = y;
+                    c.pose.orientation = quat;
+                    c.header.frame_id = "/base_footprint_turned";
+
+                    static tf::TransformListener tf_listener;
+                    ros::Time now = ros::Time::now();
+                    tf_listener.waitForTransform("/map", "/base_footprint_turned", now, ros::Duration(3.0));
+                    tf_listener.transformPose("/map", c, nav_goal);
+
+                    sendGoalToMovebase();
+
+                    my_movebase->waitForResult();
+
+                    if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                        e.riseEvent("/CONTAINER_REACHED");
+                        return decision_making::TaskResult::SUCCESS();
+                    } else {
+                        nav_goal = container_pose;
+
+                        sendGoalToMovebase();
+
+                        my_movebase->waitForResult();
+
+                        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                            e.riseEvent("/CONTAINER_REACHED");
+                            return decision_making::TaskResult::SUCCESS();
+                        } else {
+                            turnCurrentPoseAround();
+                            my_movebase->waitForResult();
+
+                            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                                e.riseEvent("/TRY_CONTAINER_AGAIN");
+                                return decision_making::TaskResult::SUCCESS();
+                            } else {
+                                nav_goal.pose.position = standardPoses.poses[4].position;
+                                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                                sendGoalToMovebase();
+
+                                my_movebase->waitForResult();
+
+                                if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                                    e.riseEvent("/TRY_CONTAINER_AGAIN");
+                                    return decision_making::TaskResult::SUCCESS();
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    e.riseEvent("/CONTAINER_REACHED");
+                    return decision_making::TaskResult::SUCCESS();
+                }
+            }
         } else {
             turnCurrentPoseAround();
             my_movebase->waitForResult();
@@ -836,7 +1031,6 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                     return decision_making::TaskResult::SUCCESS();
                 }
             }
-            ROS_INFO("Could not reach container pose!");
         }
     }
     return decision_making::TaskResult::FAIL();
@@ -893,22 +1087,22 @@ int main(int argc, char **argv) {
 
     // Set poses for container and truck
     container_pose.header.frame_id = "/map";
-    container_pose.pose.position.x = -1.812;
-    container_pose.pose.position.y = -1.359;
-    container_pose.pose.orientation.z = -0.642;
-    container_pose.pose.orientation.w = 0.767;
+    container_pose.pose.position.x = -1.804;
+    container_pose.pose.position.y = -1.271;
+    container_pose.pose.orientation.z = -0.657;
+    container_pose.pose.orientation.w = 0.754;
 
     truck_pose_1.header.frame_id = "/map";
-    truck_pose_1.pose.position.x = -0.466;
-    truck_pose_1.pose.position.y = -1.074;
-    truck_pose_1.pose.orientation.z = -0.410;
-    truck_pose_1.pose.orientation.w = 0.912;
+    truck_pose_1.pose.position.x = -0.874;
+    truck_pose_1.pose.position.y = -0.724;
+    truck_pose_1.pose.orientation.z = 0.883;
+    truck_pose_1.pose.orientation.w = 0.470;
 
-    truck_pose_2.header.frame_id = "/map";
-    truck_pose_2.pose.position.x = -0.509;
-    truck_pose_2.pose.position.y = -1.001;
-    truck_pose_2.pose.orientation.z = -0.411;
-    truck_pose_2.pose.orientation.w = 0.912;
+//    truck_pose_2.header.frame_id = "/map";
+//    truck_pose_2.pose.position.x = -0.509;
+//    truck_pose_2.pose.position.y = -1.001;
+//    truck_pose_2.pose.orientation.z = -0.411;
+//    truck_pose_2.pose.orientation.w = 0.912;
 
     // Set standardposes for driving around
     geometry_msgs::Pose pose1;
@@ -984,6 +1178,8 @@ int main(int argc, char **argv) {
     // Register services
     detection_client = node->serviceClient<opencv_detect_squares::GetObjects>("/getCVObjects");
     laser_client = node->serviceClient<cluster_pointcloud::get_barrels>("/get_barrel_list");
+    container_client = node->serviceClient<opencv_detect_squares::GetContainerRect>("/getContainerRect");
+    truck_client = node->serviceClient<cluster_pointcloud::get_truck>("/get_truck");
 
     RosEventQueue* q = new RosEventQueue();
 
