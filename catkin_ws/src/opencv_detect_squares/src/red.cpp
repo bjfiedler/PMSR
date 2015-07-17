@@ -48,6 +48,7 @@ class ImageConverter
 	tf::TransformListener listener;
 	ros::ServiceServer objectServer;
 	ros::ServiceServer containerServer;
+	ros::ServiceServer containerRectServer;
 	ros::Publisher objectPublisher;
 	ros::Publisher posePublisher;
 	
@@ -66,7 +67,9 @@ public:
 		
 		
 		objectServer = nh_.advertiseService("getCVObjects", &ImageConverter::objectServiceCB, this);
-		objectServer = nh_.advertiseService("getContainerPosition", &ImageConverter::containerServiceCB, this);
+		containerServer = nh_.advertiseService("getContainerPosition", &ImageConverter::containerServiceCB, this);
+		containerRectServer = nh_.advertiseService("getContainerRect", &ImageConverter::containerServiceCB, this);
+		
 		
 	}
 	
@@ -77,6 +80,79 @@ public:
 		cv:destroyWindow("Control");
 	}
 
+	bool containerRectServiceCB(opencv_detect_squares::GetContainerRect::Request &req, opencv_detect_squares::GetContainerRect::Response &res)
+	{
+		
+		global_detectedObjects.clear();
+		
+		
+		// 		cout<<"Sercice called\n";
+		ROS_INFO("getCVObjects called");
+		if (framesToAnalyseCount)
+			return false;
+		lookingForBarrels = false;
+		if (req.numberOfFrames)
+			framesToAnalyseCount = req.numberOfFrames;
+		else
+			framesToAnalyseCount = 3*25;
+		
+		while (framesToAnalyseCount)
+			ros::spinOnce();
+		
+		if (global_detectedObjects.size() != 0)
+		{
+			sort(global_detectedObjects.begin(), global_detectedObjects.end(), barrelDetectionCountCompare);
+			
+			//build the message
+			opencv_detect_squares::DetectedObjectArray objects;
+			objects.objects.resize(global_detectedObjects.size());
+			objects.header.stamp = ros::Time::now();
+			objects.header.frame_id = tf_world_frame;
+			
+			for (int i = 0; i < global_detectedObjects.size(); i++)
+			{
+				// 			cout<<"   --  "<<global_detectedObjects[i].ghs<<'\n';
+				objects.objects[i].type = "container";
+				objects.objects[i].pose = translatePixelToRealworld(global_detectedObjects[i].center);
+				objects.objects[i].color = global_detectedObjects[i].color;
+				
+				// 				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
+				// 				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
+				ROS_INFO("Container %s %s\nx: %f        y: %f\n\n",objects.objects[i].color.c_str(), objects.objects[i].ghs.c_str(), objects.objects[i].pose.position.x, objects.objects[i].pose.position.y);
+			}
+			res.result = objects;
+
+			geometry_msgs::PoseArray rect;
+			rect.header.stamp = ros::Time::now();
+			rect.header.frame_id = tf_world_frame;
+			
+			rect.poses.resize(4);
+			float x, y, w, h;
+			x = global_detectedObjects[0].position.x;
+			y = global_detectedObjects[0].position.y;
+			w = global_detectedObjects[0].position.width;
+			h = global_detectedObjects[0].position.height;
+			
+			rect.poses[0] = translatePixelToRealworld(Point2f(x,y));
+			rect.poses[1] = translatePixelToRealworld(Point2f(x+w,y));
+			rect.poses[2] = translatePixelToRealworld(Point2f(x,y+h));
+			rect.poses[3] = translatePixelToRealworld(Point2f(x+w,y+h));
+			
+			res.rect = rect;
+			
+
+
+			
+			objectPublisher.publish(objects);
+			publishSquares(objects);
+			return true;
+		}
+		// 		cout<<"nothing found\n";
+		ROS_INFO("nothing found");
+		return false;
+	}
+	
+	
 	bool containerServiceCB(opencv_detect_squares::GetObjects::Request &req, opencv_detect_squares::GetObjects::Response &res)
 	{
 		
@@ -251,8 +327,8 @@ public:
 		}
 		else
 		{
-			img_thresh = thresholdImage(img_hsv, 0);
-			barrels = findBarrels(img_thresh, 0);
+			img_thresh = thresholdImage(img_hsv, 4);
+			barrels = findBarrels(img_thresh, 4);
 		}
 		
 #if debug_mode
@@ -500,6 +576,9 @@ int main(int argc, char** argv)
 		
 		thresholds[YELLOW_l] = Scalar(19, 57, 238);
 		thresholds[YELLOW_h] = Scalar(179, 152, 255);
+		
+		thresholds[CONTAINER_l] = Scalar(8, 97, 89);
+		thresholds[CONTAINER_h] = Scalar(48, 255, 255);
 
 // 			iLowH = 0;
 // 			iHighH = 22;

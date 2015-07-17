@@ -27,6 +27,7 @@
 #include <string.h>
 #include "opencv_detect_squares/DetectedObjectArray.h"
 #include "opencv_detect_squares/GetObjects.h"
+#include "opencv_detect_squares/GetContainerRect.h"
 
 #define debug_mode 0
 #define debug_mode_verbose 0
@@ -74,7 +75,7 @@ extern cv::Matx33f cameraIntrinsic, cameraIntrinsic_inv;
 
 //color separation thresholds
 #define NUM_COLORS 3
-enum e_colors {RED_l, RED_h, GREEN_l, GREEN_h, YELLOW_l, YELLOW_h,GHS_l, GHS_h, e_colorsMAX = GHS_h};
+enum e_colors {RED_l, RED_h, GREEN_l, GREEN_h, YELLOW_l, YELLOW_h,GHS_l, GHS_h,CONTAINER_l, CONTAINER_h, e_colorsMAX = CONTAINER_h};
 
 extern Scalar thresholds[e_colorsMAX];
 

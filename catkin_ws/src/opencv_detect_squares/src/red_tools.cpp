@@ -2,7 +2,7 @@
 
 // returns sequence of squares detected on the image.
 // the sequence is stored in the specified memory storage
-static std::string color_names[] = {"red", "green", "yellow"};
+static std::string color_names[] = {"red", "green", "yellow", "ghs", "yellow"};
 
 
 
