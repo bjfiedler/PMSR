@@ -78,7 +78,7 @@ geometry_msgs::PoseStamped nav_goal;
 geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
 geometry_msgs::PoseStamped container_pose;
-geometry_msgs::PoseStamped truck_pose_1;
+geometry_msgs::PoseStamped truck_pose;
 //geometry_msgs::PoseStamped truck_pose_2;
 
 // Vectors
@@ -94,7 +94,7 @@ int next_place_on_truck = 1;
 int max_fail_counter = 3;
 double distanceFromObject = 0.65;
 double distanceFromTruck = 0.5;
-double distanceFromContainer = -0.55;
+double distanceFromContainer = -0.55; //negative
 double objectThreshold = 0.15;
 double min_pick_distance = 0.8;
 bool unloading = false;
@@ -112,7 +112,7 @@ bool moveToNamedTarget(string target){
 bool driveForward() {
 
     geometry_msgs::Twist forward;
-    forward.linear.x = 0.05;
+    forward.linear.x = 0.1;
 
     ros::Time start = ros::Time::now();
     while(ros::Time::now() - start < ros::Duration(1.5)){
@@ -128,11 +128,9 @@ void sendGoalToMovebase(){
 
     move_base_msgs::MoveBaseGoal goal;
 
-    // the incoming geometry_msgs::Quaternion is transformed to a tf::Quaterion
     tf::Quaternion quat;
     tf::quaternionMsgToTF(nav_goal.pose.orientation, quat);
 
-    // the tf::Quaternion has a method to acess roll pitch and yaw
     double roll, pitch, yaw;
     tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
 
@@ -350,18 +348,7 @@ geometry_msgs::PoseStamped calculateDesiredPosition(double x_pre, double y_pre, 
     ros::Time now = ros::Time::now();
 
     double h = sqrt(pow(x_pre,2) + pow(y_pre,2)) - distanceFromObject;
-    double alpha;
-    if(x_pre > 0 && y_pre > 0){
-        alpha = atan(y_pre / x_pre);
-    } else if(x_pre > 0 && y_pre < 0){
-        alpha = atan(y_pre / x_pre) + 2*M_PI;
-    } else if(x_pre < 0) {
-        alpha = atan(y_pre / x_pre) + M_PI;
-    } else if(x_pre == 0 && y_pre > 0){
-        alpha = M_PI / 2;
-    } else if(x_pre == 0 && y_pre < 0){
-        3*M_PI / 2;
-    }
+    double alpha = atan2(y_pre, x_pre);
     double y = h * sin(alpha);
     double x = h * cos(alpha);
 
@@ -412,16 +399,12 @@ void refreshPOI(){
         }
     }
 
-    one_second.sleep();
-
     geometry_msgs::PoseArray test;
     foreach (taged_pose cur, points_of_interest) {
         test.poses.push_back(cur.pose.pose);
     }
     test.header.frame_id = "/map";
     test_pub.publish(test);
-
-    one_second.sleep();
 }
 
 void turnNavGoalAround(){
@@ -461,8 +444,6 @@ decision_making::TaskResult initialize(std::string, const decision_making::FSMCa
 
     init_pub.publish(initialpose);
 
-    one_second.sleep();
-
     if(moveToNamedTarget("drive")){
         e.riseEvent("/DONE");
         return decision_making::TaskResult::SUCCESS();
@@ -501,7 +482,6 @@ decision_making::TaskResult analyzeScan(std::string, const decision_making::FSMC
 
     nav_goal = calculateDesiredPosition(target_base_link.pose.position.x, target_base_link.pose.position.y, true);
 
-    one_second.sleep();
     e.riseEvent("/TARGET_FOUND");
     return decision_making::TaskResult::SUCCESS();
 }
@@ -549,10 +529,9 @@ decision_making::TaskResult turnToTarget(std::string, const decision_making::FSM
 
 decision_making::TaskResult detection(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
-    opencv_detect_squares::GetObjects detection_srv;
-    detection_srv.request.numberOfFrames = 0;
     if(moveToNamedTarget("search_front_top")){
-
+        opencv_detect_squares::GetObjects detection_srv;
+        detection_srv.request.numberOfFrames = 0;
         if(detection_client.call(detection_srv)){
             opencv_detect_squares::DetectedObject detected_object = detection_srv.response.result.objects[0];
             nav_goal = calculateDesiredPosition(detected_object.pose.position.x, detected_object.pose.position.y, false);
@@ -562,16 +541,22 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
             my_movebase->waitForResult();
 
             if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                bool safe_outside;
                 object_on_robot *pre = new object_on_robot();
-                pre->color = detected_object.color;
-                pre->ghs = detected_object.ghs;
-                pre->position_on_robot = next_place_on_robot;
+                if(strcmp(detected_object.ghs.c_str(), "explosive") == 0){
+                    safe_outside = false;
+                } else {
+                    safe_outside = true;
+                    pre->color = detected_object.color;
+                    pre->ghs = detected_object.ghs;
+                    pre->position_on_robot = next_place_on_robot;
+                }
                 if(moveToNamedTarget("search_front")){
                     if(detection_client.call(detection_srv)){
-                        opencv_detect_squares::DetectedObject detected_object = detection_srv.response.result.objects[0];
-                        nav_goal = calculateDesiredPosition(detected_object.pose.position.x, detected_object.pose.position.y, false);
+                        opencv_detect_squares::DetectedObject detected_object_inside = detection_srv.response.result.objects[0];
+                        nav_goal = calculateDesiredPosition(detected_object_inside.pose.position.x, detected_object_inside.pose.position.y, false);
 
-                        if(strcmp(detected_object.ghs.c_str(), "explosive") == 0){
+                        if(strcmp(detected_object_inside.ghs.c_str(), "explosive") == 0){
                             points_of_interest[current_index].safe = false;
                             e.riseEvent("/DANGER");
                             return decision_making::TaskResult::SUCCESS();
@@ -583,8 +568,8 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
 
                         if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
                             object_on_robot *cur = new object_on_robot();
-                            cur->color = detected_object.color;
-                            cur->ghs = detected_object.ghs;
+                            cur->color = detected_object_inside.color;
+                            cur->ghs = detected_object_inside.ghs;
                             cur->position_on_robot = next_place_on_robot;
                             objects_on_robot[next_place_on_robot - 1] = cur;
                             e.riseEvent("/SAFE");
@@ -596,9 +581,15 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
                             return decision_making::TaskResult::SUCCESS();
                         }
                     } else {
-                        objects_on_robot[next_place_on_robot-1] = pre;
-                        e.riseEvent("/SAFE");
-                        return decision_making::TaskResult::SUCCESS();
+                        if(safe_outside){
+                            objects_on_robot[next_place_on_robot-1] = pre;
+                            e.riseEvent("/SAFE");
+                            return decision_making::TaskResult::SUCCESS();
+                        } else {
+                            points_of_interest[current_index].safe = false;
+                            e.riseEvent("/DANGER");
+                            return decision_making::TaskResult::SUCCESS();
+                        }
                     }
                 }
             } else {
@@ -613,8 +604,8 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
             e.riseEvent("/MOVE_CORRECTION_FAILED");
             return decision_making::TaskResult::SUCCESS();
         }
-        return decision_making::TaskResult::FAIL();
     }
+    return decision_making::TaskResult::FAIL();
 }
 
 decision_making::TaskResult driveAround(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
@@ -664,13 +655,15 @@ decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCa
                 if(driveForward()){
                     one_second.sleep();
                     closeGripper();
+                    one_second.sleep();
                     if(moveToNamedTarget("safety_front")){
                         if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                             one_second.sleep();
                             openGripper();
+                            // Object is now picked and removed of the map
+                            next_place_on_robot++;
+                            points_of_interest.erase(points_of_interest.begin()+current_index);
                             if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
-                                next_place_on_robot++;
-                                points_of_interest.erase(points_of_interest.begin()+current_index);
                                 if(moveToNamedTarget("safety_back")){
                                     turnNavGoalAround();
                                     my_movebase->waitForResult();
@@ -731,10 +724,11 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
     if(moveToNamedTarget("drive")){
 
         if(truck_half_full){
+            // other distance if truck is half full
             distanceFromTruck = 0.7;
         }
 
-        nav_goal = truck_pose_1;
+        nav_goal = truck_pose;
 
         sendGoalToMovebase();
 
@@ -761,18 +755,7 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                 double x = x_st + distanceFromTruck * x_vec * norm;
                 double y = y_st + distanceFromTruck * y_vec * norm;
 
-                double alpha;
-                if(x_pre > 0 && y_pre > 0){
-                    alpha = atan(y_pre / x_pre);
-                } else if(x_pre > 0 && y_pre < 0){
-                    alpha = atan(y_pre / x_pre) + 2*M_PI;
-                } else if(x_pre < 0) {
-                    alpha = atan(y_pre / x_pre) + M_PI;
-                } else if(x_pre == 0 && y_pre > 0){
-                    alpha = M_PI / 2;
-                } else if(x_pre == 0 && y_pre < 0){
-                    3*M_PI / 2;
-                }
+                double alpha = atan2(y_pre, x_pre);
 
                 nav_goal.pose.position.x = x;
                 nav_goal.pose.position.y = y;
@@ -787,7 +770,7 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                     e.riseEvent("/TRUCK_REACHED");
                     return decision_making::TaskResult::SUCCESS();
                 } else {
-                    nav_goal = truck_pose_1;
+                    nav_goal = truck_pose;
 
                     sendGoalToMovebase();
 
@@ -853,29 +836,31 @@ decision_making::TaskResult placeToTruck(std::string, const decision_making::FSM
 
     if(moveToNamedTarget("safety_back")){
         for (int i = 0; i < 3; i++) {
-            object_on_robot cur = *objects_on_robot[i];
-            if(strcmp(cur.ghs.c_str(), "none") != 0){
-                if(next_place_on_truck > 3){
-                    next_place_on_truck = 1;
-                    truck_half_full = true;
-                    e.riseEvent("/CORRECT_TRUCK_POSITION");
-                    return decision_making::TaskResult::SUCCESS();
-                }
-                if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
-                    one_second.sleep();
+            if(objects_on_robot[i] != 0){
+                object_on_robot cur = *objects_on_robot[i];
+                if(strcmp(cur.ghs.c_str(), "none") != 0){
+                    if(next_place_on_truck > 3){
+                        next_place_on_truck = 1;
+                        truck_half_full = true;
+                        e.riseEvent("/CORRECT_TRUCK_POSITION");
+                        return decision_making::TaskResult::SUCCESS();
+                    }
                     if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                         one_second.sleep();
-                        if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                        if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                             one_second.sleep();
-                            closeGripper();
-                            one_second.sleep();
-                            if(moveToNamedTarget("place_truck_"+ boost::lexical_cast<std::string>(next_place_on_truck))){
-                                next_place_on_truck++;
-                                objects_on_robot[i] = 0;
-                                next_place_on_robot--;
+                            if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                                 one_second.sleep();
-                                openGripper();
+                                closeGripper();
                                 one_second.sleep();
+                                if(moveToNamedTarget("place_truck_"+ boost::lexical_cast<std::string>(next_place_on_truck))){
+                                    next_place_on_truck++;
+                                    objects_on_robot[i] = 0;
+                                    next_place_on_robot--;
+                                    one_second.sleep();
+                                    openGripper();
+                                    one_second.sleep();
+                                }
                             }
                         }
                     }
@@ -942,18 +927,7 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                     double x = x_st + distanceFromContainer * x_vec * norm;
                     double y = y_st + distanceFromContainer * y_vec * norm;
 
-                    double alpha;
-                    if(x_pre > 0 && y_pre > 0){
-                        alpha = atan(y_pre / x_pre);
-                    } else if(x_pre > 0 && y_pre < 0){
-                        alpha = atan(y_pre / x_pre) + 2*M_PI;
-                    } else if(x_pre < 0) {
-                        alpha = atan(y_pre / x_pre) + M_PI;
-                    } else if(x_pre == 0 && y_pre > 0){
-                        alpha = M_PI / 2;
-                    } else if(x_pre == 0 && y_pre < 0){
-                        3*M_PI / 2;
-                    }
+                    double alpha = atan2(y_pre, x_pre);
 
                     geometry_msgs::Quaternion quat =  tf::createQuaternionMsgFromRollPitchYaw(0, 0, alpha-M_PI/2);
                     geometry_msgs::PoseStamped c;
@@ -1040,31 +1014,33 @@ decision_making::TaskResult placeToContainer(std::string, const decision_making:
 
     if(moveToNamedTarget("safety_back")){
         for (int i = 0; i < 3; i++) {
-            object_on_robot cur = *objects_on_robot[i];
-            if(strcmp(cur.ghs.c_str(), "none") == 0){
-                if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
-                    one_second.sleep();
+            if(objects_on_robot[i] != 0){
+                object_on_robot cur = *objects_on_robot[i];
+                if(strcmp(cur.ghs.c_str(), "none") == 0){
                     if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                         one_second.sleep();
-                        if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
+                        if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                             one_second.sleep();
-                            closeGripper();
-                            one_second.sleep();
-                            string target;
-                            if(strcmp(cur.color.c_str(), "red") == 0){
-                                target = "place_container_r";
-                            } else if(strcmp(cur.color.c_str(), "yellow") == 0){
-                                target = "place_container_m";
-                            } else if(strcmp(cur.color.c_str(), "green") == 0){
-                                target = "place_container_l";
-                            }
-                            if(moveToNamedTarget(target)){
+                            if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(cur.position_on_robot))){
                                 one_second.sleep();
-                                openGripper();
-                                objects_on_robot[i] = 0;
-                                next_place_on_robot--;
+                                closeGripper();
+                                one_second.sleep();
+                                string target;
+                                if(strcmp(cur.color.c_str(), "red") == 0){
+                                    target = "place_container_r";
+                                } else if(strcmp(cur.color.c_str(), "yellow") == 0){
+                                    target = "place_container_m";
+                                } else if(strcmp(cur.color.c_str(), "green") == 0){
+                                    target = "place_container_l";
+                                }
+                                if(moveToNamedTarget(target)){
+                                    one_second.sleep();
+                                    openGripper();
+                                    objects_on_robot[i] = 0;
+                                    next_place_on_robot--;
+                                }
+                                one_second.sleep();
                             }
-                            one_second.sleep();
                         }
                     }
                 }
@@ -1092,17 +1068,11 @@ int main(int argc, char **argv) {
     container_pose.pose.orientation.z = -0.657;
     container_pose.pose.orientation.w = 0.754;
 
-    truck_pose_1.header.frame_id = "/map";
-    truck_pose_1.pose.position.x = -0.874;
-    truck_pose_1.pose.position.y = -0.724;
-    truck_pose_1.pose.orientation.z = 0.883;
-    truck_pose_1.pose.orientation.w = 0.470;
-
-//    truck_pose_2.header.frame_id = "/map";
-//    truck_pose_2.pose.position.x = -0.509;
-//    truck_pose_2.pose.position.y = -1.001;
-//    truck_pose_2.pose.orientation.z = -0.411;
-//    truck_pose_2.pose.orientation.w = 0.912;
+    truck_pose.header.frame_id = "/map";
+    truck_pose.pose.position.x = -0.874;
+    truck_pose.pose.position.y = -0.724;
+    truck_pose.pose.orientation.z = 0.883;
+    truck_pose.pose.orientation.w = 0.470;
 
     // Set standardposes for driving around
     geometry_msgs::Pose pose1;
