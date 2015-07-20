@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<launch>
+
+  <!-- Laser Scanner -->
+	<include file="$(find lms1xx)/launch/LMS1xx.launch" />
+
+  <!-- OODL Driver -->
+	<include file="$(find youbot_driver_ros_interface)/launch/youbot_driver.launch" />
+
+  <!-- Joint State Publisher -->
+	<include file="$(find youbot_driver_ros_interface)/launch/youbot_joint_state_publisher.launch" />
+
+</launch>

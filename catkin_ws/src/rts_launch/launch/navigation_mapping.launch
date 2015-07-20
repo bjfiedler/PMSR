@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<launch>
+	
+
+	<!-- launch move_base node -->
+	<node pkg="move_base" type="move_base" name="move_base" output="screen" >
+		<remap from="odom" to="base_odometry/odom"/>
+		<rosparam file="$(find rts_launch)/cfg/costmap_common_params.yaml"			command="load" ns="global_costmap" />
+		<rosparam file="$(find rts_launch)/cfg/costmap_common_params.yaml"			command="load" ns="local_costmap" />
+		<rosparam file="$(find rts_launch)/cfg/local_costmap_params.yaml"			command="load" />
+		<rosparam file="$(find rts_launch)/cfg/global_costmap_params.yaml"			command="load" />
+		<rosparam file="$(find rts_launch)/cfg/base_local_planner_params_dwa.yaml"	command="load" />
+
+		<param name="controller_frequency" type="double" value="10.0" />
+	</node>
+	
+	<!-- launch gmapping -->
+	<include file="$(find rts_launch)/launch/gmapping.launch" />
+
+</launch>

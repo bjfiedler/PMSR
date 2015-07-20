@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<package>
+  <name>rts_launch</name>
+  <version>1.0.0</version>
+  <description>The rts_launch package</description>
+  <maintainer email="carstensen@rts.uni-hannover.de">Jan Carstensen</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+</package>

@@ -1,0 +1,44 @@
+#TF Parameters
+
+transform_tolerance: 0.5
+
+#Rate Parameters
+
+update_frequency: 2.0
+publish_frequency: 10.0
+
+#Global Costmap Parameters
+
+cost_scaling_factor: 10.0
+
+#Robot Description Parameters
+
+# convex footprint:
+footprint: [[0.285, -0.19], [-0.285, -0.19], [-0.36, -0.05], [-0.36, 0.05], [-0.285, 0.19], [0.285, 0.19], [0.36, 0.05], [0.36, -0.05]]
+
+inscribed_radius: 0.03
+inflation_layer/lethal_obstacle_radius: 0.00
+
+#Sensor Management Parameters
+
+observation_sources: laser_scan_sensor water_cloud
+
+laser_scan_sensor:
+  topic: /scan_filtered
+  sensor_frame: /laser
+  observation_persistence: 0.0
+  expected_update_rate: 0.25
+  data_type: LaserScan
+  marking: true
+  clearing: true
+  min_obstacle_height: -0.1
+  max_obstacle_height: 1.2
+  obstacle_range: 4
+  min_obstalce_range: 0.5
+  raytrace_range: 3.0
+
+water_cloud:
+  topic: /waterPointCloud
+  data_type: PointCloud
+  marking: true
+

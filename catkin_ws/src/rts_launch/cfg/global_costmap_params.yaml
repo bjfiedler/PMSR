@@ -1,0 +1,25 @@
+global_costmap:
+#Coordinate Frame
+
+  global_frame: /map
+  robot_base_frame: /base_footprint_turned
+  
+#Map Management Parameters
+  static_map: true
+  rolling_window: false
+  publish_voxel_map: false
+  map_topic: /map
+  
+#Map Type Parameters
+  map_type: costmap
+  track_unknown_space: false
+
+  inflation_layer:
+    inflation_radius: 0.2
+    lethal_inflation_radius: 0.21
+
+  static_layer:
+    map_topic: map
+    lethal_cost_threshold: 100
+    unknown_cost_value: -1
+    use_map_data: true

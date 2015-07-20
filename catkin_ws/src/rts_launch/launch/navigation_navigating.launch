@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<launch>
+
+	<!-- set machine by argument -->
+	
+
+	<!-- set map by argument -->
+	<arg name="map" default="$(find rts_launch)/maps/youbot.yaml"/>
+
+	<!-- set output for setting navigation quiet if necessary-->
+	<arg name="output" default="screen"/>
+
+	<!-- setup maschines -->
+	
+
+	<!-- run the map server -->
+	<node pkg="map_server" type="map_server" name="map_server" args="$(arg map)"  />
+
+ 	<!--- Run AMCL -->
+	<node pkg="amcl" type="amcl" name="amcl" output="$(arg output)">
+    <remap from="scan" to="scan_filtered"/>
+    <rosparam file="$(find rts_launch)/cfg/amcl_params.yaml" command="load" />
+	</node>
+	
+	<!--- Turn base link around -->
+	<node pkg="tf" type="static_transform_publisher" name="base_footprint_turner" args="0 0 0 3.1415 0 0 base_footprint base_footprint_turned 500" />
+
+	<!--- Run node to turn twist -->
+	<node pkg="youbot_2dnav" type="turn_twist" name="turn_twist"/>
+
+	<!--- Filter laser scan -->
+	<include file="$(find laser_filters)/test/my_laser_filter.launch" />
+
+
+	<!--launch move_base node -->
+	<node pkg="move_base" type="move_base" name="move_base" output="$(arg output)" respawn="true">			
+		<rosparam file="$(find rts_launch)/cfg/move_base_params.yaml"				command="load" /> 
+		<rosparam file="$(find rts_launch)/cfg/costmap_common_params.yaml"			command="load" ns="global_costmap" />
+		<rosparam file="$(find rts_launch)/cfg/costmap_common_params.yaml"			command="load" ns="local_costmap" />
+		<rosparam file="$(find rts_launch)/cfg/local_costmap_params.yaml"			command="load" />
+		<rosparam file="$(find rts_launch)/cfg/global_costmap_params.yaml"			command="load" />
+		<rosparam file="$(find rts_launch)/cfg/base_local_planner_params_dwa.yaml"		command="load" />
+		<rosparam file="$(find rts_launch)/cfg/base_global_planner_params.yaml"       command="load" />
+
+		<remap from="cmd_vel" to="cmd_vel_movebase" />
+
+	</node>
+
+
+
+
+	<!-- set goal tolerance lower for navigating with rviz -->
+	<param name="xy_goal_tolerance" type="double" value="0.2"/>
+
+</launch>
