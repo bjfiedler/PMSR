@@ -30,17 +30,42 @@
 #include <stdlib.h>
 
 
-geometry_msgs::PoseArray truck_pose;
 
 ros::Publisher pub;
 
+struct my_truck_pose {
+    geometry_msgs::Pose begin_pose;
 
+    geometry_msgs::Pose end_pose;
+};
+
+// ///////////////////////////////////////////////////
+
+        // Einstellung der Messzeit
+        int meas_time = 3;
+
+        // Einstellung der Messfrequenz
+        int meas_frequency = 25;
+
+// ///////////////////////////////////////////////////
+
+
+        int meas_counter = meas_time * meas_frequency;
+
+std::vector<my_truck_pose> my_pose_list ;
+
+bool cloud_cb_run = false; 
+
+int run_counter = 0;
 
 
 void
 cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 {
 
+if(cloud_cb_run){
+
+    run_counter ++;
 
     pcl::PCLPointCloud2 pcl_pc2;
     pcl_conversions::toPCL(*input,pcl_pc2);
@@ -57,7 +82,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-    ec.setClusterTolerance (0.08); // 6cm
+    ec.setClusterTolerance (0.06); // 6cm
     ec.setMinClusterSize (10); // 100
     //ec.setMaxClusterSize (600); // 25000
     ec.setSearchMethod (tree);
@@ -118,7 +143,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
       map_end_truck_pose.pose.orientation.w = 1.0;
 
-     int index;
+     int index = 0;
 
 
     for(int i = 0; i < clouds_list.size(); i++){
@@ -133,11 +158,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
         object_width = sqrt(pow(( x1 - x2), 2) + pow((y1 - y2), 2));
 
 
-        float m = (y2 - y1) / (x1 - x2);
-
-        float b = y1 - (m * x1);
-
-        if((object_width >= 0.83f) && (object_width <= 0.86f)){ // 0.18 breit 0.84 lang
+        if((object_width >= 0.81f) && (object_width <= 0.85f)){ // 0.18 breit 0.84 lang
 
              truck_counter = truck_counter + 1;
 
@@ -159,19 +180,23 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
         listener.transformPose("/map", begin_truck_pose, map_begin_truck_pose);
         listener.transformPose("/map", end_truck_pose, map_end_truck_pose);
 
-        truck_pose.poses.clear();
-        truck_pose.poses.push_back(map_begin_truck_pose.pose);
-        truck_pose.poses.push_back(map_end_truck_pose.pose);
+        my_truck_pose my_pose;
 
+        my_pose.begin_pose = map_begin_truck_pose.pose;
+
+        my_pose.end_pose = map_end_truck_pose.pose;
+
+        my_pose_list.push_back(my_pose);
         sensor_msgs::PointCloud2 pub_cloud;
 
         pcl::toROSMsg(*clouds_list[index], pub_cloud);
 
-        pub_cloud.header.frame_id = "/base_link";
+       pub_cloud.header.frame_id = "/base_link";
 
         pub.publish(pub_cloud);
 
         }
+}
 
 }
 
@@ -185,14 +210,66 @@ bool get_truck(cluster_pointcloud::get_truck::Request  &req,
          cluster_pointcloud::get_truck::Response &res)
 {
 
+
+    while(run_counter < meas_counter){
+
+        cloud_cb_run = true;
+        ros::spinOnce();
+
+    }
+
+    cloud_cb_run = false;
+	
+	run_counter = 0;
+
+    geometry_msgs::PoseArray truck_pose;
+
+
+    
+
     truck_pose.header.frame_id = "/map";
 
-    if(truck_pose.poses.size() == 0){
-        return false;
-    }else{
-        res.truck_pose = truck_pose ;
-        return true;
-    }
+    geometry_msgs::Pose begin_pose;
+    geometry_msgs::Pose end_pose;
+
+ 
+
+   if(my_pose_list.size() == 0){
+       
+       return false;
+   }else{
+       //begin_pose = my_pose_list[0].begin_pose;
+
+       //end_pose = my_pose_list[0].end_pose;
+
+	for(int i = 0;  i < my_pose_list.size(); i++){
+        begin_pose.position.x = begin_pose.position.x + my_pose_list[i].begin_pose.position.x;
+
+        begin_pose.position.y = begin_pose.position.y + my_pose_list[i].begin_pose.position.y;
+
+        end_pose.position.x = end_pose.position.x + my_pose_list[i].end_pose.position.x;
+
+        end_pose.position.y = end_pose.position.y + my_pose_list[i].end_pose.position.y;
+
+    	}
+	
+
+    	begin_pose.position.x = begin_pose.position.x / my_pose_list.size();
+
+    	begin_pose.position.y = begin_pose.position.y / my_pose_list.size();
+
+     	end_pose.position.x = end_pose.position.x / my_pose_list.size();
+
+    	end_pose.position.y = end_pose.position.y / my_pose_list.size();
+
+     		 truck_pose.poses.push_back(begin_pose);
+      		truck_pose.poses.push_back(end_pose);
+
+      		 res.truck_pose = truck_pose;
+       		 my_pose_list.clear();
+       return true;
+   }
+
 
 }
 

@@ -30,10 +30,10 @@
 // ///////////////////////////////////////////////////
 
         // Einstellung der Messzeit
-        int meas_time = 2;
+        int meas_time = 3;
 
         // Einstellung der Messfrequenz
-        int meas_frequency = 5;
+        int meas_frequency = 25;
 
 // ///////////////////////////////////////////////////
 
@@ -120,10 +120,6 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
     float distance = 10000000;
     float tem_distance = 0;
 
-
-
-
-
     float  x_pose = 0;
     float y_pose = 0;
     float z_pose = 0;
@@ -189,6 +185,8 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
              geometry_msgs:: PoseStamped map_pose;
 
+              map_pose.pose.orientation.w = 1.0;
+
             listener.waitForTransform("/map", "/base_link", ros::Time::now(), ros::Duration(3.0));
             listener.transformPose("/map", pose, map_pose);
 
@@ -199,17 +197,18 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
                 float my_x = my_pose_list[k].pose.position.x;
                 float my_y = my_pose_list[k].pose.position.y;
 
-                bool found = false;
+
 
                 float x = map_pose.pose.position.x;
                 float y = map_pose.pose.position.y;
 
                 float position_distance = sqrt(pow(my_x - x, 2) + pow(my_y - y, 2));
 
-                if(position_distance < 10){
+                if(position_distance < 0.1){
                     my_pose_list[k].counter++;
                     found = true;
-
+                    my_pose_list[k].pose.position.x = (my_x + x) / 2;
+                    my_pose_list[k].pose.position.y = (my_y + y) / 2;
                  }
 
             }
@@ -218,7 +217,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
                myPose my_pose;
                my_pose.pose = map_pose.pose;
-               my_pose.counter = 0;
+               my_pose.counter = 1;
                my_pose_list.push_back(my_pose);
             }
 
@@ -241,6 +240,7 @@ bool get_barrel_list(cluster_pointcloud::get_barrels::Request  &req,
 
     while(cloud_cb_counter < meas_counter){
         run_cloud_cd = true;
+        ros::spinOnce();
     }
 
     cloud_cb_counter = 0;
@@ -251,7 +251,7 @@ bool get_barrel_list(cluster_pointcloud::get_barrels::Request  &req,
 
     for(int i = 0; i < my_pose_list.size(); i++){
 
-        if(my_pose_list[i].counter > (meas_counter / 2)){
+        if(my_pose_list[i].counter > (meas_counter * 0.75)){
             pose_list.poses.push_back(my_pose_list[i].pose);
         }
 
