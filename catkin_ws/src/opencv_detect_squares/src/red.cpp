@@ -561,11 +561,11 @@ int main(int argc, char** argv)
 		thresholds[GHS_l] = Scalar(0, 0, 170);
 		thresholds[GHS_h] = Scalar(22, 255, 255);
 		
-		thresholds[RED_l] = Scalar(0, 163, 190);
+		thresholds[RED_l] = Scalar(0, 150, 190);
 		thresholds[RED_h] = Scalar(179, 255, 255);
 		
 		thresholds[GREEN_l] = Scalar(62, 61, 89);
-		thresholds[GREEN_h] = Scalar(131, 255, 149);
+		thresholds[GREEN_h] = Scalar(131, 255, 255);
 		
 		thresholds[YELLOW_l] = Scalar(15, 62, 180);
 		thresholds[YELLOW_h] = Scalar(170, 152, 255);
