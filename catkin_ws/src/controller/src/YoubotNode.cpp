@@ -79,6 +79,8 @@ geometry_msgs::PoseArray standardPoses;
 geometry_msgs::PoseWithCovarianceStamped initialpose;
 geometry_msgs::PoseStamped container_pose;
 geometry_msgs::PoseStamped truck_pose;
+geometry_msgs::PoseStamped container_pose_safety;
+geometry_msgs::PoseStamped truck_pose_safety;
 //geometry_msgs::PoseStamped truck_pose_2;
 
 // Vectors
@@ -599,7 +601,7 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
                 return decision_making::TaskResult::SUCCESS();
             }
         } else {
-            points_of_interest[current_index].fail_counter++;
+            points_of_interest.erase(points_of_interest.begin()+current_index);
             last_target_failed = true;
             e.riseEvent("/MOVE_CORRECTION_FAILED");
             return decision_making::TaskResult::SUCCESS();
@@ -623,7 +625,13 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
 
             if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
                 refreshPOI();
-                if(points_of_interest.size() > 0){
+                int counter = 0;
+                foreach (taged_pose cur, points_of_interest) {
+                    if(cur.fail_counter < max_fail_counter && cur.safe){
+                        counter++;
+                    }
+                }
+                if(counter > 0){
                     e.riseEvent("/NEW_OBJECT");
                     return decision_making::TaskResult::SUCCESS();
                 }
@@ -631,15 +639,13 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
         }
     }
 
-    if(points_of_interest.size() == 0){
-        if(next_place_on_robot > 1){
-            last_unload = true;
-            e.riseEvent("/LAST_UNLOAD");
-            return decision_making::TaskResult::SUCCESS();
-        } else {
-            e.riseEvent("/TIMEOUT");
-            return decision_making::TaskResult::SUCCESS();
-        }
+    if(next_place_on_robot > 1){
+        last_unload = true;
+        e.riseEvent("/LAST_UNLOAD");
+        return decision_making::TaskResult::SUCCESS();
+    } else {
+        e.riseEvent("/TIMEOUT");
+        return decision_making::TaskResult::SUCCESS();
     }
 
     return decision_making::TaskResult::FAIL();
@@ -660,11 +666,11 @@ decision_making::TaskResult moveItPick(std::string, const decision_making::FSMCa
                         if(moveToNamedTarget("place_final_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                             one_second.sleep();
                             openGripper();
-                            // Object is now picked and removed of the map
-                            next_place_on_robot++;
-                            points_of_interest.erase(points_of_interest.begin()+current_index);
                             if(moveToNamedTarget("place_choose_"+ boost::lexical_cast<std::string>(next_place_on_robot))){
                                 if(moveToNamedTarget("safety_back")){
+                                    // Object is now picked and removed of the map
+                                    next_place_on_robot++;
+                                    points_of_interest.erase(points_of_interest.begin()+current_index);
                                     turnNavGoalAround();
                                     my_movebase->waitForResult();
                                     if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
@@ -770,7 +776,7 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                     e.riseEvent("/TRUCK_REACHED");
                     return decision_making::TaskResult::SUCCESS();
                 } else {
-                    nav_goal = truck_pose;
+                    nav_goal = truck_pose_safety;
 
                     sendGoalToMovebase();
 
@@ -802,8 +808,36 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                     }
                 }
             } else {
-                e.riseEvent("/TRUCK_REACHED");
-                return decision_making::TaskResult::SUCCESS();
+                nav_goal = truck_pose_safety;
+
+                sendGoalToMovebase();
+
+                my_movebase->waitForResult();
+
+                if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                    e.riseEvent("/TRUCK_REACHED");
+                    return decision_making::TaskResult::SUCCESS();
+                } else {
+                    turnCurrentPoseAround();
+                    my_movebase->waitForResult();
+
+                    if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                        e.riseEvent("/TRY_TRUCK_AGAIN");
+                        return decision_making::TaskResult::SUCCESS();
+                    } else {
+                        nav_goal.pose.position = standardPoses.poses[4].position;
+                        nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                        sendGoalToMovebase();
+
+                        my_movebase->waitForResult();
+
+                        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                            e.riseEvent("/TRY_TRUCK_AGAIN");
+                            return decision_making::TaskResult::SUCCESS();
+                        }
+                    }
+                }
             }
 
 
@@ -949,7 +983,7 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                         e.riseEvent("/CONTAINER_REACHED");
                         return decision_making::TaskResult::SUCCESS();
                     } else {
-                        nav_goal = container_pose;
+                        nav_goal = container_pose_safety;
 
                         sendGoalToMovebase();
 
@@ -981,8 +1015,36 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                         }
                     }
                 } else {
-                    e.riseEvent("/CONTAINER_REACHED");
-                    return decision_making::TaskResult::SUCCESS();
+                    nav_goal = container_pose_safety;
+
+                    sendGoalToMovebase();
+
+                    my_movebase->waitForResult();
+
+                    if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                        e.riseEvent("/CONTAINER_REACHED");
+                        return decision_making::TaskResult::SUCCESS();
+                    } else {
+                        turnCurrentPoseAround();
+                        my_movebase->waitForResult();
+
+                        if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                            e.riseEvent("/TRY_CONTAINER_AGAIN");
+                            return decision_making::TaskResult::SUCCESS();
+                        } else {
+                            nav_goal.pose.position = standardPoses.poses[4].position;
+                            nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+
+                            sendGoalToMovebase();
+
+                            my_movebase->waitForResult();
+
+                            if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
+                                e.riseEvent("/TRY_CONTAINER_AGAIN");
+                                return decision_making::TaskResult::SUCCESS();
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -1063,44 +1125,56 @@ int main(int argc, char **argv) {
 
     // Set poses for container and truck
     container_pose.header.frame_id = "/map";
-    container_pose.pose.position.x = -1.804;
-    container_pose.pose.position.y = -1.271;
-    container_pose.pose.orientation.z = -0.657;
-    container_pose.pose.orientation.w = 0.754;
+    container_pose.pose.position.x = -1.901;
+    container_pose.pose.position.y = -1.200;
+    container_pose.pose.orientation.z = -0.674;
+    container_pose.pose.orientation.w = 0.739;
 
     truck_pose.header.frame_id = "/map";
-    truck_pose.pose.position.x = -0.874;
-    truck_pose.pose.position.y = -0.724;
-    truck_pose.pose.orientation.z = 0.883;
-    truck_pose.pose.orientation.w = 0.470;
+    truck_pose.pose.position.x = -1.008;
+    truck_pose.pose.position.y = -0.734;
+    truck_pose.pose.orientation.z = 0.890;
+    truck_pose.pose.orientation.w = 0.456;
+
+    container_pose_safety.header.frame_id = "/map";
+    container_pose_safety.pose.position.x = -1.910;
+    container_pose_safety.pose.position.y = -1.301;
+    container_pose_safety.pose.orientation.z = -0.665;
+    container_pose_safety.pose.orientation.w = 0.747;
+
+    truck_pose_safety.header.frame_id = "/map";
+    truck_pose_safety.pose.position.x = -0.625;
+    truck_pose_safety.pose.position.y = -0.838;
+    truck_pose_safety.pose.orientation.z = -0.495;
+    truck_pose_safety.pose.orientation.w = 0.869;
 
     // Set standardposes for driving around
     geometry_msgs::Pose pose1;
-    pose1.position.x = -0.442;
-    pose1.position.y = -1.275;
-    pose1.orientation.z = -0.286;
-    pose1.orientation.w = 0.958;
+    pose1.position.x = -1.047;
+    pose1.position.y = -1.026;
+    pose1.orientation.z = -0.360;
+    pose1.orientation.w = 0.933;
     standardPoses.poses.push_back(pose1);
 
     geometry_msgs::Pose pose2;
-    pose2.position.x = -2.305;
-    pose2.position.y = -1.468;
-    pose2.orientation.z = -0.750;
-    pose2.orientation.w = 0.662;
+    pose2.position.x = -2.369;
+    pose2.position.y = -1.431;
+    pose2.orientation.z = -0.796;
+    pose2.orientation.w = 0.606;
     standardPoses.poses.push_back(pose2);
 
     geometry_msgs::Pose pose3;
-    pose3.position.x = -2.783;
-    pose3.position.y = 0.841;
-    pose3.orientation.z = 0.865;
-    pose3.orientation.w = 0.501;
+    pose3.position.x = -2.742;
+    pose3.position.y = 0.968;
+    pose3.orientation.z = 0.911;
+    pose3.orientation.w = 0.135;
     standardPoses.poses.push_back(pose3);
 
     geometry_msgs::Pose pose4;
-    pose4.position.x = -0.913;
-    pose4.position.y = 1.489;
-    pose4.orientation.z = 0.074;
-    pose4.orientation.w = 0.997;
+    pose4.position.x = -0.973;
+    pose4.position.y = 1.527;
+    pose4.orientation.z = 0.086;
+    pose4.orientation.w = 0.996;
     standardPoses.poses.push_back(pose4);
 
     geometry_msgs::Pose pose5;
@@ -1120,7 +1194,6 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 36; i++) {
         initialpose.pose.covariance[i] = 0.0;
     }
-
 
     ros::init(argc, argv, "youbot_node");
     ros_decision_making_init(argc, argv);
