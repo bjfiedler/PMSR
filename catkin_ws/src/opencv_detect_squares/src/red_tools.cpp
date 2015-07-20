@@ -12,13 +12,6 @@ bool barrelDetectionCountCompare( barrel a, barrel b)
 	return a.detection_count<b.detection_count;
 }
 
-
-
-
-
-
-
-
 RotatedRect findSquares( const Mat& gray0, int cur_color)
 {
 	vector<vector<Point> > squares;
@@ -76,7 +69,7 @@ RotatedRect findSquares( const Mat& gray0, int cur_color)
 				// Note: absolute value of an area is used because
 				// area may be positive or negative - in accordance with the
 				// contour orientation
-				if( approx.size() == 4 &&
+				if( approx.size() <= 5 &&
 					fabs(contourArea(Mat(approx))) > 100 &&
 					isContourConvex(Mat(approx)) )
 				{
@@ -158,7 +151,7 @@ vector<barrel> findBarrels(const Mat& img, int cur_color)
 		if (fabs(cv::contourArea((Mat)approx)) < 100 || !cv::isContourConvex(approx))
 			continue;
 
-		//if (approx.size() > 6)
+		if (approx.size() > 6 || cur_color > 3)
 		{
 			barrel b;
 			minEnclosingCircle((Mat)approx, b.center, b.radius);

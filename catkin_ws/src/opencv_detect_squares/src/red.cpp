@@ -68,7 +68,7 @@ public:
 		
 		objectServer = nh_.advertiseService("getCVObjects", &ImageConverter::objectServiceCB, this);
 		containerServer = nh_.advertiseService("getContainerPosition", &ImageConverter::containerServiceCB, this);
-		containerRectServer = nh_.advertiseService("getContainerRect", &ImageConverter::containerServiceCB, this);
+		containerRectServer = nh_.advertiseService("getContainerRect", &ImageConverter::containerRectServiceCB, this);
 		
 		
 	}
@@ -118,7 +118,6 @@ public:
 				
 				// 				cout<<objects.objects[i].pose.position.x<<' '<<objects.objects[i].pose.position.y<<'\n';
 				// 				cout<<objects.objects[i].color<<' '<<objects.objects[i].ghs<<'\n';
-				ROS_INFO("Container %s %s\nx: %f        y: %f\n\n",objects.objects[i].color.c_str(), objects.objects[i].ghs.c_str(), objects.objects[i].pose.position.x, objects.objects[i].pose.position.y);
 			}
 			res.result = objects;
 
@@ -140,6 +139,7 @@ public:
 			
 			res.rect = rect;
 			
+			ROS_INFO("Container %s %s\nx: %f        y: %f\n\n",objects.objects[0].color.c_str(), objects.objects[0].ghs.c_str(), objects.objects[0].pose.position.x, objects.objects[0].pose.position.y);
 
 
 			
@@ -251,6 +251,9 @@ public:
 						objects.objects[i].ghs = "toxic";
 						break;
 					case 3:
+						objects.objects[i].ghs = "fire";
+						break;
+					case 4:
 						objects.objects[i].ghs = "explosive";
 						break;
 					default:
@@ -308,7 +311,7 @@ public:
 		cvtColor(cv_ptr->image, img_hsv, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
 		
 		//check every separated color for barrels
-		if (findBarrels)
+		if (lookingForBarrels)
 		{
 			for (int cur_color = 0; cur_color < NUM_COLORS; cur_color++)
 			{
@@ -339,20 +342,10 @@ public:
 			rectangle( cv_ptr->image, barrels[i].position.tl(), barrels[i].position.br(), Scalar(127,255,0), 2, 8, 0 );
 		}
 		
-		//check the separated GHS Sign Color for GHS Signs in ROIs of barrels
-// 		img_thresh = thresholdImage(img_hsv, 3);
-// 		imshow("bar", img_thresh);
-// 		cout<<"fffffffffffffffffff\n";
 #endif
-// 		checkGHS(img_thresh, &barrels, cv_ptr->image);
-// 		cout<<"lala"<<barrels.size()<<'\n';
 		if (barrels.size() == 0)
 			return;
 
-		
-		//TODO insert new objects into global
-// 		global_detectedObjects = objects;
-		
 		
 		float x, y, rad, x2, y2;
 		bool newBarrel = 1;
@@ -568,14 +561,14 @@ int main(int argc, char** argv)
 		thresholds[GHS_l] = Scalar(0, 0, 170);
 		thresholds[GHS_h] = Scalar(22, 255, 255);
 		
-		thresholds[RED_l] = Scalar(0, 139, 242);
+		thresholds[RED_l] = Scalar(0, 163, 190);
 		thresholds[RED_h] = Scalar(179, 255, 255);
 		
-		thresholds[GREEN_l] = Scalar(62, 138, 89);
+		thresholds[GREEN_l] = Scalar(62, 61, 89);
 		thresholds[GREEN_h] = Scalar(131, 255, 149);
 		
-		thresholds[YELLOW_l] = Scalar(19, 57, 238);
-		thresholds[YELLOW_h] = Scalar(179, 152, 255);
+		thresholds[YELLOW_l] = Scalar(15, 62, 180);
+		thresholds[YELLOW_h] = Scalar(170, 152, 255);
 		
 		thresholds[CONTAINER_l] = Scalar(8, 97, 89);
 		thresholds[CONTAINER_h] = Scalar(48, 255, 255);

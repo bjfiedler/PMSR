@@ -98,12 +98,9 @@ struct barrel {
 	//Position in image
 	Rect position;
 	
-// 	string ghs;
 	int ghs_sum;
 	string color;
 	
-	//position in tf_world_frame
-// 	geometry_msgs::Pose pose;
 };
 bool barrelDetectionCountCompare( barrel a, barrel b);
 
