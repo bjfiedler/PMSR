@@ -28,6 +28,6 @@ recovery_behavior_enabled: true
 clearing_rotation_allowed: true
 conservative_reset_dist: 2.0
 
-oscillation_timeout: 0.0
+oscillation_timeout: 45.0
 oscillation_distance: 0.5
 

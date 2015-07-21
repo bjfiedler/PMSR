@@ -21,7 +21,7 @@ local_costmap:
 
   inflation_layer:
     inflation_radius: 0.1
-    lethal_inflation_radius: 0.00
+    lethal_inflation_radius: 0.05
 
   static_layer:
     map_topic: map

@@ -15,8 +15,8 @@ global_costmap:
   track_unknown_space: false
 
   inflation_layer:
-    inflation_radius: 0.2
-    lethal_inflation_radius: 0.21
+    inflation_radius: 0.25
+    lethal_inflation_radius: 0.26
 
   static_layer:
     map_topic: map

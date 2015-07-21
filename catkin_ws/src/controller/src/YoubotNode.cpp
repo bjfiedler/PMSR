@@ -235,6 +235,7 @@ bool out_of_map(geometry_msgs::Pose pose){
     bool in_polygon = false;
     bool out_wall = false;
     bool out_container = false;
+    bool out_truck = false;
 
     for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
         if ((polygon[i].y > y) != (polygon[j].y > y) &&
@@ -301,7 +302,33 @@ bool out_of_map(geometry_msgs::Pose pose){
 
     polygon.clear();
 
-    return !(in_polygon && out_container && out_wall);
+    point1.x = 0.15;
+    point1.y = -0.72;
+
+    point2.x = 0.28;
+    point2.y = -1.84;
+
+    point3.x = -1.4;
+    point3.y = -2.09;
+
+
+    polygon.push_back(point1);
+    polygon.push_back(point2);
+    polygon.push_back(point3);
+
+
+    for (i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+        if ((polygon[i].y > y) != (polygon[j].y > y) &&
+                (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y-polygon[i].y) + polygon[i].x)) {
+            out_truck = !out_truck;
+        }
+    }
+
+    out_truck= !out_truck;
+
+    polygon.clear();
+
+    return !(in_polygon && out_container && out_wall && out_truck);
 }
 
 int choose_next_target(){
@@ -573,6 +600,9 @@ decision_making::TaskResult detection(std::string, const decision_making::FSMCal
                             cur->color = detected_object_inside.color;
                             cur->ghs = detected_object_inside.ghs;
                             cur->position_on_robot = next_place_on_robot;
+				if(strcmp(cur->ghs.c_str(), "none") == 0 && strcmp(pre->ghs.c_str(), "none") != 0){
+					cur->ghs = pre->ghs;
+				}
                             objects_on_robot[next_place_on_robot - 1] = cur;
                             e.riseEvent("/SAFE");
                             return decision_making::TaskResult::SUCCESS();
@@ -614,8 +644,8 @@ decision_making::TaskResult driveAround(std::string, const decision_making::FSMC
 
     if(moveToNamedTarget("drive")){
 
-        geometry_msgs::Pose pose;
-        foreach (pose, standardPoses.poses) {
+        for(int i = 0; i<6; i++) {
+		geometry_msgs::Pose pose = standardPoses.poses[i];
             nav_goal.pose.position = pose.position;
             nav_goal.pose.orientation = pose.orientation;
 
@@ -793,8 +823,8 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                             e.riseEvent("/TRY_TRUCK_AGAIN");
                             return decision_making::TaskResult::SUCCESS();
                         } else {
-                            nav_goal.pose.position = standardPoses.poses[4].position;
-                            nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                            nav_goal.pose.position = standardPoses.poses[5].position;
+                            nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                             sendGoalToMovebase();
 
@@ -825,8 +855,8 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                         e.riseEvent("/TRY_TRUCK_AGAIN");
                         return decision_making::TaskResult::SUCCESS();
                     } else {
-                        nav_goal.pose.position = standardPoses.poses[4].position;
-                        nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                        nav_goal.pose.position = standardPoses.poses[5].position;
+                        nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                         sendGoalToMovebase();
 
@@ -849,8 +879,8 @@ decision_making::TaskResult driveToTruck(std::string, const decision_making::FSM
                 e.riseEvent("/TRY_TRUCK_AGAIN");
                 return decision_making::TaskResult::SUCCESS();
             } else {
-                nav_goal.pose.position = standardPoses.poses[4].position;
-                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                nav_goal.pose.position = standardPoses.poses[5].position;
+                nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                 sendGoalToMovebase();
 
@@ -912,14 +942,16 @@ decision_making::TaskResult placeToTruck(std::string, const decision_making::FSM
 decision_making::TaskResult driveToContainer(std::string, const decision_making::FSMCallContext& c, decision_making::EventQueue& e) {
 
     if(moveToNamedTarget("drive")){
-        nav_goal = container_pose;
+        nav_goal = container_pose_safety;
 
         sendGoalToMovebase();
 
         my_movebase->waitForResult();
 
         if(my_movebase->getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-            if(moveToNamedTarget("search_container")){
+		e.riseEvent("/CONTAINER_REACHED");
+                return decision_making::TaskResult::SUCCESS();
+            /*if(moveToNamedTarget("search_container")){
 
                 opencv_detect_squares::GetContainerRect container_srv;
                 container_srv.request.numberOfFrames = 0;
@@ -1000,8 +1032,8 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                                 e.riseEvent("/TRY_CONTAINER_AGAIN");
                                 return decision_making::TaskResult::SUCCESS();
                             } else {
-                                nav_goal.pose.position = standardPoses.poses[4].position;
-                                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                                nav_goal.pose.position = standardPoses.poses[5].position;
+                                nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                                 sendGoalToMovebase();
 
@@ -1032,8 +1064,8 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                             e.riseEvent("/TRY_CONTAINER_AGAIN");
                             return decision_making::TaskResult::SUCCESS();
                         } else {
-                            nav_goal.pose.position = standardPoses.poses[4].position;
-                            nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                            nav_goal.pose.position = standardPoses.poses[5].position;
+                            nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                             sendGoalToMovebase();
 
@@ -1046,7 +1078,7 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                         }
                     }
                 }
-            }
+            } */
         } else {
             turnCurrentPoseAround();
             my_movebase->waitForResult();
@@ -1055,8 +1087,8 @@ decision_making::TaskResult driveToContainer(std::string, const decision_making:
                 e.riseEvent("/TRY_CONTAINER_AGAIN");
                 return decision_making::TaskResult::SUCCESS();
             } else {
-                nav_goal.pose.position = standardPoses.poses[4].position;
-                nav_goal.pose.orientation = standardPoses.poses[4].orientation;
+                nav_goal.pose.position = standardPoses.poses[5].position;
+                nav_goal.pose.orientation = standardPoses.poses[5].orientation;
 
                 sendGoalToMovebase();
 
@@ -1178,11 +1210,18 @@ int main(int argc, char **argv) {
     standardPoses.poses.push_back(pose4);
 
     geometry_msgs::Pose pose5;
-    pose5.position.x = -0.750;
-    pose5.position.y = -0.012;
-    pose5.orientation.z = 0.067;
-    pose5.orientation.w = 0.998;
+    pose5.position.x = -2.722;
+    pose5.position.y = 0.353;
+    pose5.orientation.z = 0.911;
+    pose5.orientation.w = 0.135;
     standardPoses.poses.push_back(pose5);
+
+    geometry_msgs::Pose pose6;
+    pose6.position.x = -0.750;
+    pose6.position.y = -0.012;
+    pose6.orientation.z = 0.067;
+    pose6.orientation.w = 0.998;
+    standardPoses.poses.push_back(pose6);
 
     // Set initial pose for robot
     initialpose.header.frame_id = "/map";

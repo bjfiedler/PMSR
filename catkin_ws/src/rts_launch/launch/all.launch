@@ -1,0 +1,21 @@
+<launch>
+
+  <include file="$(find rts_launch)/launch/base_system.launch" />
+  <include file="$(find rts_launch)/launch/navigation_navigating.launch" />
+
+  <include file="$(find youbot_traj_controller)/launch/youbot_trajectory_controller.launch" />
+  
+  <include file="$(find youbot_moveit_config)/launch/youbot.launch" />
+  
+  <include file="$(find cluster_pointcloud)/launch/object_cluster.launch" />
+  
+  
+  <include file="$(find opencv_detect_squares)/launch/objectdetection.launch" />
+  
+  
+  
+<!--  <node pkg="controller" type="youbot" name="youbot" /> -->
+  
+</launch>
+
+

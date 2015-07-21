@@ -204,7 +204,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input)
 
                 float position_distance = sqrt(pow(my_x - x, 2) + pow(my_y - y, 2));
 
-                if(position_distance < 0.1){
+                if(position_distance < 0.15){
                     my_pose_list[k].counter++;
                     found = true;
                     my_pose_list[k].pose.position.x = (my_x + x) / 2;

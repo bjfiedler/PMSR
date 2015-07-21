@@ -38,6 +38,7 @@ laser_scan_sensor:
   raytrace_range: 3.0
 
 water_cloud:
+  observation_persistence: 0.0
   topic: /waterPointCloud
   data_type: PointCloud
   marking: true

@@ -6,4 +6,8 @@
   <node pkg="cluster_pointcloud" type="cluster_pointcloud"
       name="cluster_pointcloud">
   </node>
+
+  <node pkg="cluster_pointcloud" type="cluster_pointcloud"
+      name="find_truck">
+  </node>
 </launch>

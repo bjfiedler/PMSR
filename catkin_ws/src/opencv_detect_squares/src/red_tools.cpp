@@ -69,7 +69,7 @@ RotatedRect findSquares( const Mat& gray0, int cur_color)
 				// Note: absolute value of an area is used because
 				// area may be positive or negative - in accordance with the
 				// contour orientation
-				if( approx.size() <= 5 &&
+				if( (approx.size() == 4 || approx.size() == 5) &&
 					fabs(contourArea(Mat(approx))) > 100 &&
 					isContourConvex(Mat(approx)) )
 				{
@@ -181,12 +181,13 @@ void checkGHS(const Mat& img, vector<barrel> *barrelp, const Mat& img_color, int
 #endif
 		RotatedRect roi = findSquares(img_roi, cur_color);
 		
+		imshow("foo", img_roi);
 		if (roi.size.width<1)
 		{
 			(*barrelp)[i].ghs_sum = 0;//"none";
-#if debug_mode
+// #if debug_mode
 			cout<<"roi to small\n";
-#endif
+// #endif
 		}
 		
 		else

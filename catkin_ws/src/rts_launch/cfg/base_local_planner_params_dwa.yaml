@@ -42,8 +42,8 @@ DWAPlannerROS:
 
 #Trajectory Scoring Parameters
 
-  path_distance_bias: 32.0
-  goal_distance_bias: 24.0
+  path_distance_bias: 40.0
+  goal_distance_bias: 15.0
   occdist_scale: 0.5
   heading_cost_scale: 5.0
   
